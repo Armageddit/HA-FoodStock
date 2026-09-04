@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from sqlalchemy import text
 
 from app.database import engine
 
@@ -34,3 +35,24 @@ def database_configured():
         "host": engine.url.host,
         "port": engine.url.port,
     }
+
+
+@app.get("/db-health")
+def db_health():
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(text("SELECT 1"))
+            value = result.scalar()
+
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "test": value,
+        }
+
+    except Exception as error:
+        return {
+            "status": "unhealthy",
+            "database": "connection_failed",
+            "error": str(error),
+        }
