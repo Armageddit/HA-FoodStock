@@ -56,3 +56,19 @@ Expaso-App „TimeScaleDb“ als PostgreSQL-Basis unterstützt aarch64
 - Unsere endgültige Serverstruktur definieren
 - Was wir als Backend-Technik verwenden werden
 - Speicher planen innerhalb von `/data`
+
+Aktueller Beta-Stand
+
+    ✅ GitHub Repository funktioniert
+    ✅ Home Assistant erkennt das Beta-Repository
+    ✅ FoodStock wird als Add-on installiert
+    ✅ ARM64 auf dem Raspberry Pi funktioniert
+    ✅ Container startet
+    ✅ FastAPI läuft
+    ✅ Weboberfläche/API erreichbar
+    ✅ /health funktioniert
+    ✅ Datenbank-Konfiguration wird korrekt übernommen
+    ✅ PostgreSQL/TimescaleDB-Verbindung funktioniert
+    ✅ Datenbankabfrage SELECT 1 funktioniert
+    ✅ Beta-Update von 0.1.0 → 0.1.1 funktioniert
+
