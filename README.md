@@ -2,6 +2,7 @@
 # Projekt: FoodStock – private Lebensmittelverwaltungs-App
 
 Dies ist aktuell eine Beta testverssion die noch nicht funktioniert!
+
 Ich möchte eine vollständige Homeassistant Anwendung mit Android-App für die Verwaltung meines Lebensmittelvorrats bauen.
 
 * * *
