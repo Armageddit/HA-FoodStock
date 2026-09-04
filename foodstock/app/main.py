@@ -1,31 +1,52 @@
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import text
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select, text
 
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal, engine
 from app.models import FoodItem
 
 
 app = FastAPI(
     title="FoodStock API",
     description="Private API für die selbst gehostete FoodStock-App",
-    version="0.2.0",
+    version="0.2.1",
 )
 
 
-class FoodItemCreate(BaseModel):
+class ItemCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    quantity: int = Field(default=1, ge=0)
+    unit: str = Field(default="Stück", min_length=1, max_length=50)
+    category: str | None = Field(default=None, max_length=100)
+    expiry_date: date | None = None
+
+
+class ItemUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    quantity: int | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, min_length=1, max_length=50)
+    category: str | None = Field(default=None, max_length=100)
+    expiry_date: date | None = None
+
+
+class ItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
     name: str
-    quantity: int = 1
-    unit: str = "Stück"
-    category: str | None = None
-    expires_at: date | None = None
+    quantity: int
+    unit: str
+    category: str | None
+    expiry_date: date | None
+    created_at: datetime
+    updated_at: datetime
 
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
+    FoodItem.metadata.create_all(bind=engine)
 
 
 @app.get("/")
@@ -33,15 +54,26 @@ def root():
     return {
         "application": "FoodStock",
         "status": "ok",
-        "version": "0.2.0",
+        "version": "0.2.1",
     }
 
 
 @app.get("/health")
 def health():
-    return {
-        "status": "healthy",
-    }
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(text("SELECT 1")).scalar()
+
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "test": result,
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Datenbank nicht erreichbar: {exc}",
+        )
 
 
 @app.get("/database-configured")
@@ -54,81 +86,73 @@ def database_configured():
     }
 
 
-@app.get("/db-health")
-def db_health():
-    try:
-        with engine.connect() as connection:
-            value = connection.execute(text("SELECT 1")).scalar()
+@app.post("/items", response_model=ItemResponse, status_code=201)
+def create_item(item: ItemCreate):
+    with SessionLocal() as session:
+        food_item = FoodItem(**item.model_dump())
 
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "test": value,
-        }
+        session.add(food_item)
+        session.commit()
+        session.refresh(food_item)
 
-    except Exception as error:
-        return {
-            "status": "unhealthy",
-            "database": "connection_failed",
-            "error": str(error),
-        }
+        return food_item
 
 
-@app.get("/items")
+@app.get("/items", response_model=list[ItemResponse])
 def get_items():
     with SessionLocal() as session:
-        items = session.query(FoodItem).order_by(FoodItem.id).all()
-
-        return [
-            {
-                "id": item.id,
-                "name": item.name,
-                "quantity": item.quantity,
-                "unit": item.unit,
-                "category": item.category,
-                "expires_at": item.expires_at,
-            }
-            for item in items
-        ]
+        statement = select(FoodItem).order_by(FoodItem.id)
+        return list(session.scalars(statement).all())
 
 
-@app.post("/items")
-def create_item(item_data: FoodItemCreate):
+@app.get("/items/{item_id}", response_model=ItemResponse)
+def get_item(item_id: int):
     with SessionLocal() as session:
-        item = FoodItem(
-            name=item_data.name,
-            quantity=item_data.quantity,
-            unit=item_data.unit,
-            category=item_data.category,
-            expires_at=item_data.expires_at,
-        )
+        food_item = session.get(FoodItem, item_id)
 
-        session.add(item)
+        if food_item is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Artikel nicht gefunden",
+            )
+
+        return food_item
+
+
+@app.put("/items/{item_id}", response_model=ItemResponse)
+def update_item(item_id: int, item: ItemUpdate):
+    with SessionLocal() as session:
+        food_item = session.get(FoodItem, item_id)
+
+        if food_item is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Artikel nicht gefunden",
+            )
+
+        update_data = item.model_dump(exclude_unset=True)
+
+        for field, value in update_data.items():
+            setattr(food_item, field, value)
+
         session.commit()
-        session.refresh(item)
+        session.refresh(food_item)
 
-        return {
-            "id": item.id,
-            "name": item.name,
-            "quantity": item.quantity,
-            "unit": item.unit,
-            "category": item.category,
-            "expires_at": item.expires_at,
-        }
+        return food_item
 
 
 @app.delete("/items/{item_id}")
 def delete_item(item_id: int):
     with SessionLocal() as session:
-        item = session.get(FoodItem, item_id)
+        food_item = session.get(FoodItem, item_id)
 
-        if item is None:
+        if food_item is None:
             raise HTTPException(
                 status_code=404,
-                detail="Lebensmittel nicht gefunden",
+                detail="Artikel nicht gefunden",
             )
 
-        session.delete(item)
+        session.delete(food_item)
         session.commit()
 
         return {
