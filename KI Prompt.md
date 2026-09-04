@@ -1539,7 +1539,7 @@ Keine unvollständigen Codefragmente, wenn ein vollständiger Code benötigt wir
 
 Da die Architektur bereits festgelegt wurde, möchte ich keine erneute allgemeine Diskussion über Firebase, Google Cloud oder andere Cloud-Backends.
 
-Starte stattdessen mit:
+folgende Phasen wurden bereits abgeschlossen:
 
 **Phase 1 – Ist-Zustand und Vorbereitung** abgeschlossen
 
@@ -1569,19 +1569,12 @@ Expaso-App „TimeScaleDb“ als PostgreSQL-Basis unterstützt aarch64
 - PostgreSQL-Port **nicht nach außen veröffentlicht**
 - **Verwaltung über pgAdmin4**
 
-
+Starte mit:
 **Phase 3 – FoodStock-Backend vorbereiten** vorbereiten
 
 - Unsere endgültige Serverstruktur definieren
 - Was wir als Backend-Technik verwenden werden
 - Speicher planen innerhalb von `/data`
-
-
-Home Assistant OS
-
-↓
-
-PostgreSQL
 
 
 
