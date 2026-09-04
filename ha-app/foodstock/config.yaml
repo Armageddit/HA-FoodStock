@@ -2,7 +2,7 @@ name: FoodStock
 version: "0.1.0"
 slug: foodstock
 description: Private Lebensmittelverwaltung
-url: "https://github.com/foodstock-project/foodstock"
+url: "https://github.com/Armageddit/HA-FoodStock"
 arch:
   - aarch64
 startup: application
