@@ -1,0 +1,29 @@
+name: FoodStock
+version: "0.1.0"
+slug: foodstock
+description: Private Lebensmittelverwaltung
+url: "https://github.com/foodstock-project/foodstock"
+arch:
+  - aarch64
+startup: application
+boot: auto
+init: false
+ports:
+  8000/tcp: 8000
+ports_description:
+  8000/tcp: "FoodStock API"
+options:
+  database_host: "77b2833f-timescaledb"
+  database_port: 5432
+  database_name: "foodstock"
+  database_user: "foodstock_app"
+  database_password: ""
+schema:
+  database_host: str
+  database_port: int
+  database_name: str
+  database_user: str
+  database_password: password
+map:
+  - type: data
+    read_only: false
