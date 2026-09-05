@@ -1,5 +1,5 @@
 name: FoodStock
-version: "0.2.1"
+version: "1.0.0"
 slug: foodstock
 description: Private Lebensmittelverwaltung
 url: "https://github.com/Armageddit/HA-FoodStock"
@@ -8,6 +8,10 @@ arch:
 startup: application
 boot: auto
 init: false
+ingress: true
+ingress_port: 8000
+panel_icon: mdi:food-apple
+panel_title: FoodStock
 ports:
   8000/tcp: 8000
 ports_description:
@@ -18,12 +22,20 @@ options:
   database_name: "foodstock"
   database_user: "foodstock_app"
   database_password: ""
+  jwt_secret: "CHANGE-ME-use-a-random-secret-with-at-least-32-characters"
+  initial_admin_username: "admin"
+  initial_admin_password: ""
+  jwt_expires_hours: 168
 schema:
   database_host: str
   database_port: int
   database_name: str
   database_user: str
   database_password: password
+  jwt_secret: password
+  initial_admin_username: str
+  initial_admin_password: password
+  jwt_expires_hours: int(1,720)
 map:
   - type: data
     read_only: false
