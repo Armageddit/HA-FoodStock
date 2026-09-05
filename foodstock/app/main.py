@@ -5,8 +5,13 @@ Assistant add-on.  All changes go through transactional server-side commands,
 which also makes offline replay idempotent.
 """
 import os
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+from binascii import Error as BinasciiError
 from datetime import date, datetime, timedelta, timezone
+from hashlib import scrypt
+from hmac import compare_digest
 from pathlib import Path
+from secrets import token_bytes
 from typing import Annotated
 from uuid import UUID
 
@@ -15,7 +20,6 @@ import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, UploadFile
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from passlib.context import CryptContext
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -24,12 +28,11 @@ from app.database import Base, SessionLocal, engine
 from app.models import (Inventory, InventoryStatus, Product, ShoppingListItem,
                         ShoppingStatus, StorageLocation, Transaction, User, UserRole)
 
-API_VERSION = "1.0.1"
+API_VERSION = "1.0.2"
 DATA_DIR = Path(os.getenv("FOODSTOCK_DATA_DIR", "/data/foodstock"))
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 DEFAULT_JWT_SECRET = "CHANGE-ME-use-a-random-secret-with-at-least-32-characters"
 JWT_EXPIRES_HOURS = int(os.getenv("JWT_EXPIRES_HOURS", "168"))
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 app = FastAPI(title="FoodStock API", version=API_VERSION, description="Private authenticated FoodStock API")
@@ -86,6 +89,35 @@ class CorrectIn(BaseModel):
     quantity_delta: int = Field(ge=-1000, le=1000); reason: str = Field(min_length=3, max_length=1000)
     client_operation_id: UUID | None = None
 class ShoppingUpdate(BaseModel): status: ShoppingStatus
+
+
+def hash_password(password: str) -> str:
+    """Return a salted stdlib-scrypt password hash.
+
+    This avoids the incompatible passlib/bcrypt combination shipped with the
+    current Python 3.14 Home Assistant base image.  Parameters need about
+    16 MiB working memory only while a password is being processed.
+    """
+    salt = token_bytes(16)
+    digest = scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=32)
+    return "scrypt$16384$8$1$%s$%s" % (
+        urlsafe_b64encode(salt).decode("ascii"),
+        urlsafe_b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Constant-time verification of FoodStock scrypt hashes."""
+    try:
+        algorithm, n, r, p, salt_value, digest_value = stored_hash.split("$")
+        if algorithm != "scrypt":
+            return False
+        salt = urlsafe_b64decode(salt_value.encode("ascii"))
+        expected = urlsafe_b64decode(digest_value.encode("ascii"))
+        actual = scrypt(password.encode("utf-8"), salt=salt, n=int(n), r=int(r), p=int(p), dklen=len(expected))
+        return compare_digest(actual, expected)
+    except (BinasciiError, ValueError, TypeError):
+        return False
 
 def current_user(token: Annotated[str, Depends(oauth2_scheme)], db: DB) -> User:
     try:
@@ -164,7 +196,7 @@ def startup():
         if not has_users and (not username or len(password or "") < 12):
             raise RuntimeError("Für den ersten Start sind initial_admin_username und ein mindestens 12-stelliges initial_admin_password erforderlich.")
         if username and password and not db.scalar(select(User).where(User.username == username)):
-            db.add(User(username=username, password_hash=pwd_context.hash(password), role=UserRole.ADMIN)); db.commit()
+            db.add(User(username=username, password_hash=hash_password(password), role=UserRole.ADMIN)); db.commit()
 
 @app.get("/", tags=["system"])
 def root(): return {"application": "FoodStock", "status": "ok", "version": API_VERSION}
@@ -194,7 +226,7 @@ def recipe_prompt(_: CurrentUser, db: DB):
 @app.post("/auth/token", response_model=Token, tags=["auth"])
 def login(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: DB):
     user = db.scalar(select(User).where(User.username == form.username))
-    if not user or not user.active or not pwd_context.verify(form.password, user.password_hash): raise HTTPException(401, "Benutzername oder Passwort ungültig", headers={"WWW-Authenticate": "Bearer"})
+    if not user or not user.active or not verify_password(form.password, user.password_hash): raise HTTPException(401, "Benutzername oder Passwort ungültig", headers={"WWW-Authenticate": "Bearer"})
     expires = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRES_HOURS)
     return Token(access_token=jwt.encode({"sub": str(user.id), "role": user.role.value, "exp": expires}, JWT_SECRET, algorithm="HS256"))
 @app.get("/auth/me", response_model=UserOut, tags=["auth"])
@@ -204,13 +236,13 @@ def users(_: Admin, db: DB): return list(db.scalars(select(User).order_by(User.u
 @app.post("/users", response_model=UserOut, status_code=201, tags=["users"])
 def create_user(data: UserCreate, _: Admin, db: DB):
     if db.scalar(select(User).where(User.username == data.username)): raise HTTPException(409, "Benutzername existiert bereits")
-    user = User(username=data.username, password_hash=pwd_context.hash(data.password), role=data.role); db.add(user); db.commit(); db.refresh(user); return user
+    user = User(username=data.username, password_hash=hash_password(data.password), role=data.role); db.add(user); db.commit(); db.refresh(user); return user
 @app.patch("/users/{user_id}", response_model=UserOut, tags=["users"])
 def update_user(user_id: int, data: UserUpdate, actor: Admin, db: DB):
     user = db.get(User, user_id)
     if not user: raise HTTPException(404, "Benutzer nicht gefunden")
     if user.id == actor.id and data.active is False: raise HTTPException(422, "Der eigene Benutzer kann nicht deaktiviert werden")
-    if data.password: user.password_hash = pwd_context.hash(data.password)
+    if data.password: user.password_hash = hash_password(data.password)
     if data.role is not None: user.role = data.role
     if data.active is not None: user.active = data.active
     db.commit(); db.refresh(user); return user

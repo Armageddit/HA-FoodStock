@@ -53,7 +53,7 @@ Expaso-App „TimeScaleDb“ als PostgreSQL-Basis unterstützt aarch64
 ### **Phase 3 – FoodStock-Backend und Home-Assistant-Oberfläche**
 *implementiert – Installation und Funktionstest auf dem Raspberry Pi stehen noch aus*
 
-Der aktuelle Add-on-Stand ist **1.0.1** und enthält:
+Der aktuelle Add-on-Stand ist **1.0.2** und enthält:
 
 * ✅ Home-Assistant-Add-on für ARM64 mit FastAPI und PostgreSQL-Verbindung.
 * ✅ Benutzeranmeldung mit JWT, Benutzer- und Administratorrollen.
@@ -66,7 +66,7 @@ Der aktuelle Add-on-Stand ist **1.0.1** und enthält:
 
 ### Nächste Schritte bis zur fertigen App
 
-1. **Add-on aktualisieren und testen:** FoodStock in Home Assistant auf 1.0.1 aktualisieren, sichere Datenbankdaten, ein eigenes JWT-Secret und den initialen Administrator gemäß [foodstock/README.md](foodstock/README.md) setzen. Danach `/health`, `/docs` und `/ui/` im Heimnetz testen.
+1. **Add-on aktualisieren und testen:** FoodStock in Home Assistant auf 1.0.2 aktualisieren, sichere Datenbankdaten, ein eigenes JWT-Secret und den initialen Administrator gemäß [foodstock/README.md](foodstock/README.md) setzen. Danach `/health`, `/docs` und `/ui/` im Heimnetz testen.
 2. **Datenbank und Bedienoberfläche testen:** mindestens einen Lagerort und ein Produkt anlegen, einen Bestand mit MHD einlagern, FIFO-Verbrauch und automatische Einkaufsliste prüfen. Erst danach reale Vorratsdaten übernehmen.
 3. **Backup einrichten:** PostgreSQL-Dump und `/data/foodstock` automatisiert auf ein zweites Ziel sichern; anschließend eine Wiederherstellung testweise durchführen.
 4. **Zugriff absichern:** Extern nur über das WireGuard-VPN der FRITZ!Box zugreifen, PostgreSQL niemals veröffentlichen und vor einer externen App-Verteilung HTTPS über einen geeigneten Reverse Proxy/Ingress einrichten.

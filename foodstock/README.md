@@ -1,4 +1,4 @@
-# FoodStock Backend 1.0.1
+# FoodStock Backend 1.0.2
 
 Dieses Add-on stellt die private, authentifizierte REST-API für FoodStock bereit.
 PostgreSQL bleibt ausschließlich innerhalb des Home-Assistant-Add-on-Netzwerks; die Android-App spricht nur diese API an.
@@ -20,6 +20,8 @@ jwt_expires_hours: 168
 ```
 
 Erzeuge den `jwt_secret` zum Beispiel auf dem Windows-Entwicklungsrechner mit `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Der Start wird absichtlich abgebrochen, solange der Secret-Wert kürzer als 32 Zeichen ist. Nach dem ersten erfolgreichen Start ist der Bootstrap-Administrator in der Datenbank angelegt. Setze anschließend `initial_admin_password` wieder auf einen leeren Wert und starte das Add-on neu; dies verhindert, dass dieses Passwort weiter in der Add-on-Konfiguration liegt.
+
+Version 1.0.2 verwendet für neue Passwörter den sicheren, in Python enthaltenen `scrypt`-Algorithmus. Dadurch besteht keine Abhängigkeit von `passlib`/`bcrypt`, die mit dem aktuellen Python-3.14-Image nicht kompatibel sind. Da der bisherige Add-on-Start beim ersten Administrator fehlgeschlagen ist, wurden dabei noch keine alten Benutzerpasswörter angelegt.
 
 ## Persistenter Speicher
 
