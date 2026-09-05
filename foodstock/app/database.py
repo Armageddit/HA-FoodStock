@@ -1,29 +1,13 @@
 import os
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL ist nicht gesetzt. "
-        "Bitte die Umgebungsvariable DATABASE_URL konfigurieren."
-    )
+    raise RuntimeError("DATABASE_URL ist nicht gesetzt.")
 
-
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-)
-
-SessionLocal = sessionmaker(
-    bind=engine,
-    autocommit=False,
-    autoflush=False,
-)
-
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=5, max_overflow=2)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 class Base(DeclarativeBase):
     pass

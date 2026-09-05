@@ -1,7 +1,7 @@
 
 # Projekt: FoodStock – private Lebensmittelverwaltungs-App
 
-Dies ist aktuell eine Beta testverssion die noch nicht funktioniert!
+FoodStock ist eine private, selbst gehostete Lebensmittelverwaltung für Home Assistant und Android. Die Daten bleiben auf dem Raspberry Pi: Die Android-App kommuniziert ausschließlich mit der FoodStock-API, die wiederum PostgreSQL verwendet.
 
 Ich möchte eine vollständige Homeassistant Anwendung mit Android-App für die Verwaltung meines Lebensmittelvorrats bauen.
 
@@ -50,25 +50,25 @@ Expaso-App „TimeScaleDb“ als PostgreSQL-Basis unterstützt aarch64
 - **Verwaltung über pgAdmin4**
 
 
-### **Phase 3 – FoodStock-Backend vorbereiten**
-*vorbereiten*
+### **Phase 3 – FoodStock-Backend und Home-Assistant-Oberfläche**
+*implementiert – Installation und Funktionstest auf dem Raspberry Pi stehen noch aus*
 
-- Unsere endgültige Serverstruktur definieren
-- Was wir als Backend-Technik verwenden werden
-- Speicher planen innerhalb von `/data`
+Der aktuelle Add-on-Stand ist **1.0.0** und enthält:
 
-Aktueller Beta-Stand
+* ✅ Home-Assistant-Add-on für ARM64 mit FastAPI und PostgreSQL-Verbindung.
+* ✅ Benutzeranmeldung mit JWT, Benutzer- und Administratorrollen.
+* ✅ Relationale Tabellen für Produkte, einzelne Bestandseinheiten, Lagerorte, Einkaufsliste und Änderungshistorie.
+* ✅ FIFO-Verbrauch nach ältestem MHD, negative Bestände und zentrale Soll-/Idealbestandslogik.
+* ✅ Automatische Einkaufsliste, Ablaufübersicht, Barcode-Suche mit Open Food Facts und persistente Produktbilder unter `/data/foodstock`.
+* ✅ Home-Assistant-kompatible Weboberfläche unter `http://<home-assistant-ip>:8000/ui/`: Anmeldung, Übersicht, Einlagern, Verbrauch, Ablaufdaten, Einkaufsliste und „Für KI kopieren“.
+* ✅ `GET /ai/prompt` erzeugt den kostenlosen strukturierten Rezept-KI-Prompt direkt aus dem Vorrat.
+* ✅ Vollständiger FlutterFlow-Erstellungsauftrag in [KiPromptAndroidApp.md](KiPromptAndroidApp.md).
 
-    ✅ GitHub Repository funktioniert
-    ✅ Home Assistant erkennt das Beta-Repository
-    ✅ FoodStock wird als Add-on installiert
-    ✅ ARM64 auf dem Raspberry Pi funktioniert
-    ✅ Container startet
-    ✅ FastAPI läuft
-    ✅ Weboberfläche/API erreichbar
-    ✅ /health funktioniert
-    ✅ Datenbank-Konfiguration wird korrekt übernommen
-    ✅ PostgreSQL/TimescaleDB-Verbindung funktioniert
-    ✅ Datenbankabfrage SELECT 1 funktioniert
-    ✅ Beta-Update von 0.1.0 → 0.1.1 funktioniert
+### Nächste Schritte bis zur fertigen App
 
+1. **Add-on aktualisieren und testen:** FoodStock in Home Assistant auf 1.0.0 aktualisieren, sichere Datenbankdaten, ein eigenes JWT-Secret und den initialen Administrator gemäß [foodstock/README.md](foodstock/README.md) setzen. Danach `/health`, `/docs` und `/ui/` im Heimnetz testen.
+2. **Datenbank und Bedienoberfläche testen:** mindestens einen Lagerort und ein Produkt anlegen, einen Bestand mit MHD einlagern, FIFO-Verbrauch und automatische Einkaufsliste prüfen. Erst danach reale Vorratsdaten übernehmen.
+3. **Backup einrichten:** PostgreSQL-Dump und `/data/foodstock` automatisiert auf ein zweites Ziel sichern; anschließend eine Wiederherstellung testweise durchführen.
+4. **Zugriff absichern:** Extern nur über das WireGuard-VPN der FRITZ!Box zugreifen, PostgreSQL niemals veröffentlichen und vor einer externen App-Verteilung HTTPS über einen geeigneten Reverse Proxy/Ingress einrichten.
+5. **FlutterFlow-App bauen:** [KiPromptAndroidApp.md](KiPromptAndroidApp.md) verwenden, API-Basis-URL im Heimnetz/VPN konfigurieren und Anmelde-, Barcode-, OCR- sowie Offline-Synchronisationsablauf auf einem Android-Gerät testen.
+6. **Spätere Ausbaustufen:** optionales Speichern von MHD-Fotos, direkte kostenpflichtige KI-Anbindung, Speiseplanung und Home-Assistant-Dashboard-/Benachrichtigungsintegration.
