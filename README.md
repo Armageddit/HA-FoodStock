@@ -93,7 +93,7 @@ The Android application must never connect directly to PostgreSQL.
 ```text
 FoodStock-Mobile
        |
-       | HTTPS
+       | HTTP
        |
        v
 FoodStock-Home
