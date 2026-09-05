@@ -1,4 +1,4 @@
-# FoodStock Backend 1.0
+# FoodStock Backend 1.0.1
 
 Dieses Add-on stellt die private, authentifizierte REST-API für FoodStock bereit.
 PostgreSQL bleibt ausschließlich innerhalb des Home-Assistant-Add-on-Netzwerks; die Android-App spricht nur diese API an.

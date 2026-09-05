@@ -12,7 +12,7 @@ from uuid import UUID
 
 import httpx
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Query, UploadFile
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from passlib.context import CryptContext
@@ -24,7 +24,7 @@ from app.database import Base, SessionLocal, engine
 from app.models import (Inventory, InventoryStatus, Product, ShoppingListItem,
                         ShoppingStatus, StorageLocation, Transaction, User, UserRole)
 
-API_VERSION = "1.0.0"
+API_VERSION = "1.0.1"
 DATA_DIR = Path(os.getenv("FOODSTOCK_DATA_DIR", "/data/foodstock"))
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 DEFAULT_JWT_SECRET = "CHANGE-ME-use-a-random-secret-with-at-least-32-characters"
@@ -228,7 +228,7 @@ def update_location(location_id: int, data: LocationUpdate, _: Admin, db: DB):
     db.commit(); db.refresh(location); return location
 
 @app.get("/products", response_model=list[ProductOut], tags=["products"])
-def products(_: CurrentUser, db: DB, include_inactive: bool = False):
+def products(_: CurrentUser, db: DB, include_inactive: bool = Query(default=False)):
     statement = select(Product).order_by(Product.name)
     if not include_inactive: statement = statement.where(Product.active)
     return [product_out(db, p) for p in db.scalars(statement)]
@@ -300,7 +300,7 @@ def inventory(_: CurrentUser, db: DB, status_filter: InventoryStatus = Inventory
     rows = db.execute(select(Inventory, Product.name, Product.unit).join(Product).where(Inventory.status == status_filter).order_by(Inventory.expiration_date.is_(None), Inventory.expiration_date)).all()
     return [{"id": i.id, "product_id": i.product_id, "product_name": name, "unit": unit, "quantity": i.quantity, "expiration_date": i.expiration_date, "storage_location_id": i.storage_location_id, "status": i.status} for i, name, unit in rows]
 @app.get("/expiring", tags=["inventory"])
-def expiring(_: CurrentUser, db: DB, days: int = Field(default=14, ge=0, le=365)):
+def expiring(_: CurrentUser, db: DB, days: int = Query(default=14, ge=0, le=365)):
     return db.execute(select(Inventory, Product.name).join(Product).where(Inventory.status == InventoryStatus.ACTIVE, Inventory.expiration_date.is_not(None), Inventory.expiration_date <= date.today() + timedelta(days=days)).order_by(Inventory.expiration_date)).mappings().all()
 
 @app.get("/shopping-list", tags=["shopping"])
@@ -313,5 +313,5 @@ def shopping_status(product_id: int, data: ShoppingUpdate, user: CurrentUser, db
     if not item: raise HTTPException(404, "Einkaufslisteneintrag nicht gefunden")
     item.status, item.updated_by = data.status, user.id; db.commit(); return {"status": item.status}
 @app.get("/transactions", tags=["audit"])
-def transactions(_: Admin, db: DB, limit: int = Field(default=100, ge=1, le=500)):
+def transactions(_: Admin, db: DB, limit: int = Query(default=100, ge=1, le=500)):
     return db.execute(select(Transaction, Product.name, User.username).join(Product).join(User).order_by(Transaction.created_at.desc()).limit(limit)).mappings().all()
