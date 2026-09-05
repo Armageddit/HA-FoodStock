@@ -2,282 +2,528 @@
 
 ## Phase 1 — Assessment and Preparation
 
-Status:
+**Status: COMPLETED**
 
-```text
-COMPLETED
-```
+The Home Assistant OS environment, Raspberry Pi hardware, existing Home Assistant Apps, PostgreSQL strategy, storage requirements and security requirements were assessed.
 
-Activities:
+No host-level Docker installation is used.
 
--   Home Assistant environment assessed
--   Existing apps reviewed
--   PostgreSQL strategy defined
--   FoodStock deployment model defined
--   Storage strategy planned
--   Security requirements defined
+* * *
 
 ## Phase 2 — PostgreSQL
 
-Status:
+**Status: COMPLETED**
+
+PostgreSQL is provided by the existing TimescaleDB Home Assistant App.
+
+Current database environment:
+
+-   PostgreSQL 17.6
+-   TimescaleDB 5.4.2
+-   Database: `foodstock`
+-   ARM64 compatible
+-   PostgreSQL is not exposed externally
+-   pgAdmin4 is used for database administration
+
+Database connectivity from FoodStock has been verified.
+
+* * *
+
+# Phase 3 — FoodStock Backend and Home Assistant Interface
+
+**Status: IMPLEMENTED — RASPBERRY PI INSTALLATION AND ACCEPTANCE TESTING PENDING**
+
+FoodStock-Home version:
 
 ```text
-COMPLETED
+1.0.2
 ```
 
-Current deployment:
+## Implemented Features
 
-```text
-PostgreSQL/TimescaleDB App
-PostgreSQL 17.6
-Database: foodstock
-```
+### Home Assistant App
 
-Requirements achieved:
+FoodStock-Home is implemented as an ARM64-compatible Home Assistant App.
 
--   ARM64 support
--   Database operational
--   External PostgreSQL access disabled
--   pgAdmin4 available
--   Database connection verified
+It contains the FoodStock Backend based on FastAPI.
 
-## Phase 3 — FoodStock Backend Preparation
+### Database Connectivity
 
-Status:
+The backend can connect to PostgreSQL.
 
-```text
-CURRENT
-```
+The Android/mobile application does not access PostgreSQL directly.
 
-### Step 3.1
+### Authentication
 
-Define final FoodStock-Home structure.
+JWT authentication is implemented.
 
-### Step 3.2
+Supported roles:
 
-Define backend directory structure.
+-   User
+-   Administrator
 
-### Step 3.3
+Authorization is enforced by the backend.
 
-Define configuration model.
+### Database
 
-### Step 3.4
-
-Define database connection layer.
-
-### Step 3.5
-
-Introduce SQLAlchemy/Alembic structure.
-
-### Step 3.6
-
-Define persistent application storage.
-
-### Step 3.7
-
-Define logging.
-
-### Step 3.8
-
-Define health/readiness endpoints.
-
-### Step 3.9
-
-Verify PostgreSQL migrations.
-
-### Step 3.10
-
-Verify Home Assistant compatibility.
-
-No mobile application work begins before Phase 3 is stable.
-
-## Phase 4 — Database Schema
-
-Implement:
+The relational database contains the core entities required for the application, including:
 
 -   Users
 -   Roles
 -   Products
+-   Individual inventory units
 -   Storage locations
--   Inventory units
--   Inventory transactions
--   Shopping list
--   Audit events
--   File objects
+-   Shopping-list data
+-   Inventory/change history
 
-## Phase 5 — Authentication
+### Inventory
 
-Implement:
+Implemented:
+
+-   Individual inventory units
+-   Best-before dates
+-   Storage locations
+-   Negative stock
+-   Centralized stock-target logic
+-   Consumption according to earliest best-before date
+
+The consumption strategy should technically be referred to as:
+
+**FEFO — First Expire, First Out**
+
+rather than FIFO, because the ordering criterion is the best-before date.
+
+### Shopping List
+
+Implemented:
+
+-   Automatic shopping-list generation
+-   Minimum stock handling
+-   Ideal stock handling
+-   Negative stock calculation
+-   Automatic recalculation after inventory changes
+
+### Expiration Overview
+
+Implemented:
+
+-   Expired items
+-   Items approaching their best-before date
+-   Inventory-based expiration overview
+
+### Barcode Lookup
+
+Barcode lookup is implemented through Open Food Facts.
+
+The barcode is used to retrieve product information.
+
+### Product Images
+
+Product images are stored outside PostgreSQL.
+
+Persistent application storage is located below:
+
+```text
+/data/foodstock
+```
+
+The database stores references to the relevant files.
+
+### Web Interface
+
+FoodStock-Home provides a Home Assistant-compatible web interface:
+
+```text
+http://<home-assistant-ip>:8000/ui/
+```
+
+The current interface includes:
 
 -   Login
--   Access tokens
--   Token refresh
--   User identity
--   Roles
--   Authorization
+-   Dashboard
+-   Stock intake
+-   Inventory consumption
+-   Best-before-date management
+-   Shopping list
+-   Copy for AI
 
-## Phase 6 — Product Management
+### AI Prompt Export
 
-Implement:
+The endpoint:
 
--   Product CRUD
--   Barcode lookup
--   Product images
--   Product activation/deactivation
--   Open Food Facts enrichment
+```http
+GET /ai/prompt
+```
 
-## Phase 7 — Inventory
+generates a structured recipe prompt from the current inventory.
 
-Implement:
+The feature does not require a paid AI API.
+
+### FlutterFlow Specification
+
+The FlutterFlow Android application specification is documented in:
+
+```text
+KiPromptAndroidApp.md
+```
+
+This document is the development specification for FoodStock-Mobile.
+
+* * *
+
+# Phase 3 Acceptance Testing
+
+The implementation must now be installed and tested on the Raspberry Pi.
+
+No real household inventory should be entered before the acceptance tests have passed.
+
+## Test 1 — Home Assistant App Installation
+
+Install or update:
+
+```text
+FoodStock-Home 1.0.2
+```
+
+Verify:
+
+-   App starts successfully
+-   No Home Assistant errors are introduced
+-   Existing Home Assistant Apps continue operating
+-   FoodStock logs show normal startup
+
+## Test 2 — Configuration
+
+Configure:
+
+-   PostgreSQL credentials
+-   Dedicated JWT secret
+-   Initial administrator account
+
+Secrets must not be committed to Git.
+
+## Test 3 — Health Endpoint
+
+Verify:
+
+```http
+GET /health
+```
+
+Expected result:
+
+```text
+HTTP 200
+```
+
+The response must indicate that the application is healthy.
+
+## Test 4 — API Documentation
+
+Open:
+
+```text
+/docs
+```
+
+Verify that the FastAPI OpenAPI documentation loads successfully.
+
+## Test 5 — Web Interface
+
+Open:
+
+```text
+/ui/
+```
+
+Verify:
+
+-   Login works
+-   Dashboard loads
+-   No database errors are displayed
+
+## Test 6 — Storage Location
+
+Create:
+
+```text
+Test Location
+```
+
+Verify that the location is persisted.
+
+## Test 7 — Product
+
+Create a test product.
+
+Example:
+
+```text
+Name:
+Test Tomato Sauce
+
+Barcode:
+TEST-0001
+
+Minimum stock:
+2
+
+Ideal stock:
+5
+```
+
+Verify that the product can be retrieved again.
+
+## Test 8 — Inventory Unit
+
+Create an inventory unit with a known best-before date.
+
+Example:
+
+```text
+Product:
+Test Tomato Sauce
+
+Best-before date:
+2026-09-20
+
+Quantity:
+1
+```
+
+Verify that the inventory unit is persisted.
+
+## Test 9 — FEFO Consumption
+
+Create several inventory units with different best-before dates.
+
+Example:
+
+```text
+2026-09-20
+2026-09-15
+2026-10-01
+```
+
+Consume one unit.
+
+Expected result:
+
+```text
+2026-09-15
+```
+
+must be consumed first.
+
+## Test 10 — Shopping List
+
+Example:
+
+```text
+Current stock:
+1
+
+Minimum stock:
+2
+
+Ideal stock:
+5
+```
+
+Expected shopping quantity:
+
+```text
+5 - 1 = 4
+```
+
+Verify that the shopping list contains four units.
+
+## Test 11 — Negative Stock
+
+Consume more units than physically available.
+
+Example:
+
+```text
+Current stock:
+0
+
+Consume:
+1
+```
+
+Expected:
+
+```text
+Current stock:
+-1
+```
+
+Verify that the shopping-list calculation handles the negative quantity correctly.
+
+## Test 12 — Audit History
+
+Perform:
 
 -   Add inventory
 -   Consume inventory
--   FEFO
--   Negative stock
--   Corrections
--   Transactions
--   Audit history
+-   Correct inventory
 
-## Phase 8 — Shopping List
+Verify that the corresponding events are recorded with:
 
-Implement:
+-   User
+-   Timestamp
+-   Event type
+-   Affected entity
+-   Relevant quantity/change
 
--   Automatic calculation
--   Manual items
--   Purchase state
--   Inventory transfer
--   Automatic recalculation
+## Test 13 — Existing Home Assistant Installation
 
-## Phase 9 — Expiration
+After all tests, verify that:
 
-Implement:
+-   Home Assistant remains operational
+-   Existing Apps remain operational
+-   PostgreSQL remains operational
+-   Zigbee2MQTT remains operational
+-   Other previously operational services remain operational
 
--   Expired
--   Urgent
--   Soon
--   Upcoming
--   Configurable thresholds
+Only after all acceptance tests pass is Phase 3 considered operationally complete.
 
-## Phase 10 — FlutterFlow Foundation
+* * *
 
-Create FoodStock-Mobile.
+# Phase 4 — Backup and Recovery
 
-Implement:
+**Status: NOT STARTED**
 
--   Theme
--   Navigation
--   Authentication
--   API connection
--   English localization
--   German localization
+Before real household data is entered, configure:
 
-## Phase 11 — Barcode
+-   PostgreSQL backups
+-   `/data/foodstock` backups
+-   Home Assistant configuration backup
+-   Secondary backup storage
 
-Implement:
+A restoration test is mandatory.
 
--   Camera
--   Barcode recognition
--   Local barcode processing
--   API lookup
--   Unknown-product workflow
+The backup process is considered incomplete until a test restoration succeeds.
 
-## Phase 12 — OCR
+* * *
 
-Implement:
+# Phase 5 — Secure Remote Access
 
--   Expiration camera
--   Guide frame
--   Local ML Kit OCR
--   Date parser
--   Confidence/validation
--   User confirmation
--   Manual date selection
+**Status: NOT STARTED**
 
-## Phase 13 — Offline Mode
+Initial remote-access architecture:
+
+```text
+FoodStock-Mobile
+       |
+       v
+WireGuard VPN
+       |
+       v
+FRITZ!Box
+       |
+       v
+Home Network
+       |
+       v
+FoodStock-Home
+```
+
+Requirements:
+
+-   No public PostgreSQL access
+-   No direct PostgreSQL port forwarding
+-   VPN authentication required
+-   Only required services accessible
+
+Before distributing the external version of FoodStock-Mobile, HTTPS must be configured appropriately.
+
+* * *
+
+# Phase 6 — FoodStock-Mobile
+
+**Status: NOT STARTED**
+
+FoodStock-Mobile will be implemented with FlutterFlow.
+
+The development specification is:
+
+```text
+KiPromptAndroidApp.md
+```
+
+Initial workflows:
+
+1.  Login
+2.  Dashboard
+3.  Barcode scanning
+4.  Product lookup
+5.  Product creation
+6.  Local OCR
+7.  Best-before-date confirmation
+8.  Inventory intake
+9.  Inventory consumption
+10.  Shopping list
+11.  Expiration overview
+12.  Copy for AI
+13.  English/German localization
+
+* * *
+
+# Phase 7 — Offline Synchronization
+
+**Status: PLANNED**
 
 Implement:
 
 -   Local cache
--   Operation queue
+-   Local operation queue
 -   Retry
 -   Idempotency
--   Synchronization
+-   Server synchronization
 -   Conflict handling
 
-## Phase 14 — Recipe Export
+Inventory mutations must remain server-authoritative.
 
-Implement:
+* * *
 
--   Expiring-food selection
--   Prompt generation
--   Clipboard export
+# Phase 8 — Optional Features
 
-## Phase 15 — Images
+Possible future extensions:
 
-Implement:
-
--   Product images
--   Optional expiration images
--   Upload
--   Storage references
--   Image deletion
-
-## Phase 16 — Administration
-
-Implement:
-
--   Product administration
--   Inventory correction
--   Users
--   Storage locations
--   Stock targets
--   Audit history
-
-## Phase 17 — Backup and Recovery
-
-Implement and test:
-
--   Database backup
--   File backup
--   Configuration backup
--   Restore
--   Recovery documentation
-
-## Phase 18 — Home Assistant Integration
-
-Optional:
-
--   Expiring-food sensor
--   Shopping-list sensor
--   Inventory sensor
--   Notifications
--   Dashboard
--   Automations
-
-## Phase 19 — Direct AI
-
-Optional:
-
--   AI API
--   Recipe generation
--   Family preferences
--   Dietary preferences
+-   Stored best-before-date photographs
+-   Direct paid AI integration
 -   Meal planning
+-   Home Assistant sensors
+-   Home Assistant notifications
+-   Home Assistant dashboard
+-   Voice interaction
 
-## Release Strategy
+These features must not be allowed to complicate the initial stable application unnecessarily.
 
-Development releases:
+* * *
+
+# Release Principle
+
+The project should progress in controlled increments.
+
+A phase is not considered complete merely because the code exists.
+
+For infrastructure phases, completion requires:
 
 ```text
-0.x
+Implementation
+     ↓
+Installation
+     ↓
+Functional test
+     ↓
+Regression test
+     ↓
+Backup verification where applicable
+     ↓
+Phase accepted
 ```
 
-Initial stable release:
-
-```text
-1.0.0
-```
-
-Breaking API changes require a major version.
-
-Database migrations must accompany schema changes.
+Real household data should only be entered after the corresponding phase has passed its acceptance criteria.
