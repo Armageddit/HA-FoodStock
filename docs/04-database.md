@@ -420,6 +420,34 @@ Backing up only PostgreSQL is insufficient because product/image files are store
 
 A backup should be considered operationally valid only after restoration has been tested.
 
+## Future: Product Groups
+
+The current schema does not contain product groups.
+
+A future implementation may introduce a product-group abstraction:
+
+Product
+    │
+    └── ProductGroup
+
+Example:
+
+ALDI Milk 1.5% ──┐
+REWE Milk 1.5% ──┼── Milk 1.5%
+LIDL Milk 1.5% ──┘
+
+Product identity remains barcode/product based.
+
+Product groups are intended for higher-level functions such as:
+
+- aggregated stock information
+- shopping-list recommendations
+- substitutions
+- product similarity
+- future intelligent matching
+
+Automatic grouping must not silently merge distinct products.
+
 ## Source of Truth
 
 For the current database schema, the following are authoritative:
