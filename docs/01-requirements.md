@@ -213,3 +213,41 @@ FoodStock API
 ```
 
 An OCR result must never be persisted as a confirmed expiration date without user confirmation.
+
+## Product Equivalence and Product Groups
+
+The current system identifies concrete products independently, primarily using their barcode and product master data.
+
+Different products that represent the same type of food must not be automatically treated as the same product.
+
+For example:
+
+-   ALDI 1.5% milk
+-   REWE 1.5% milk
+-   Lidl 1.5% milk
+
+may remain separate concrete products even if they have similar characteristics.
+
+A future version may introduce **product groups** to associate different concrete products with a common food category or equivalent product definition.
+
+Example:
+
+```text
+ALDI Milk 1.5% ──┐
+REWE Milk 1.5% ──┼── Milk 1.5%
+Lidl Milk 1.5% ──┘
+```
+
+Product groups must not replace concrete product identity.
+
+Potential future use cases include:
+
+-   Aggregated stock information
+-   Shopping-list recommendations
+-   Product substitutions
+-   Product similarity
+-   Intelligent product matching
+
+Automatic grouping must use reliable matching rules and must not silently merge products that may be materially different.
+
+The initial Android application does not require automatic product grouping. This functionality can be implemented after the first stable mobile application release.
