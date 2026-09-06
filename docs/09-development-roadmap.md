@@ -1,418 +1,502 @@
 # FoodStock Development Roadmap
 
-## Phase 1 — Assessment and Preparation
+## 1\. Purpose
 
-**Status: COMPLETED**
+This document defines the development roadmap for FoodStock.
 
-The Home Assistant OS environment, Raspberry Pi hardware, existing Home Assistant Apps, PostgreSQL strategy, storage requirements and security requirements were assessed.
+The roadmap distinguishes between:
 
-No host-level Docker installation is used.
+-   Features already implemented
+-   Features that still require installation or acceptance testing
+-   Planned features
+-   Optional future enhancements
 
-* * *
+A feature must not be marked as completed merely because related source code exists. Where appropriate, implementation, deployment, functional testing and regression testing must all be completed before a phase is considered operationally complete.
 
-## Phase 2 — PostgreSQL
-
-**Status: COMPLETED**
-
-PostgreSQL is provided by the existing TimescaleDB Home Assistant App.
-
-Current database environment:
-
--   PostgreSQL 17.6
--   TimescaleDB 5.4.2
--   Database: `foodstock`
--   ARM64 compatible
--   PostgreSQL is not exposed externally
--   pgAdmin4 is used for database administration
-
-Database connectivity from FoodStock has been verified.
+The current backend implementation is the authoritative source for implemented API and database behavior.
 
 * * *
 
-# Phase 3 — FoodStock Backend and Home Assistant Interface
+# 2\. Phase 1 — Assessment and Preparation
 
-**Status: IMPLEMENTED — RASPBERRY PI INSTALLATION AND ACCEPTANCE TESTING PENDING**
+**Status: COMPLETED**
 
-FoodStock-Home version:
+The initial environment and deployment requirements have been assessed.
+
+This phase covered:
+
+-   Home Assistant OS
+-   Raspberry Pi deployment
+-   Existing Home Assistant applications
+-   PostgreSQL availability
+-   Persistent application storage
+-   Security requirements
+-   ARM64 compatibility
+-   Backend deployment requirements
+
+No host-level Docker installation is required for the FoodStock Home Assistant deployment.
+
+* * *
+
+# 3\. Phase 2 — PostgreSQL
+
+**Status: COMPLETED**
+
+FoodStock uses PostgreSQL as its persistent relational database.
+
+The current deployment uses the existing PostgreSQL/TimescaleDB Home Assistant environment.
+
+The database is:
 
 ```text
-1.0.2
+Database: foodstock
 ```
 
-## Implemented Features
+PostgreSQL must remain private and must not be exposed directly to the Internet.
 
-### Home Assistant App
+FoodStock connects to PostgreSQL through the backend. The mobile application does not connect to PostgreSQL directly.
 
-FoodStock-Home is implemented as an ARM64-compatible Home Assistant App.
+```text
+FoodStock-Mobile
+       |
+       v
+FoodStock API
+       |
+       v
+PostgreSQL
+```
 
-It contains the FoodStock Backend based on FastAPI.
+The database schema is defined by the application's SQLAlchemy models.
 
-### Database Connectivity
+The current implementation initializes missing database tables using SQLAlchemy metadata. A versioned migration system such as Alembic is not currently part of the application.
 
-The backend can connect to PostgreSQL.
+* * *
 
-The Android/mobile application does not access PostgreSQL directly.
+# 4\. Phase 3 — FoodStock Backend
 
-### Authentication
+**Status: IMPLEMENTED**
 
-JWT authentication is implemented.
+The FoodStock backend is implemented using FastAPI and SQLAlchemy.
 
-Supported roles:
+The backend provides:
 
--   User
--   Administrator
+-   Authentication
+-   User management
+-   Role-based authorization
+-   Product management
+-   Storage-location management
+-   Inventory management
+-   Inventory consumption
+-   Inventory correction
+-   Shopping-list management
+-   Expiration information
+-   Barcode lookup
+-   Product image handling
+-   Inventory transaction history
+-   Dashboard data
+-   AI prompt generation
 
-Authorization is enforced by the backend.
+The backend is the authoritative component for inventory business logic.
 
-### Database
+* * *
 
-The relational database contains the core entities required for the application, including:
+## 4.1 Authentication
 
--   Users
--   Roles
--   Products
--   Individual inventory units
--   Storage locations
--   Shopping-list data
--   Inventory/change history
+JWT-based authentication is implemented.
 
-### Inventory
+Supported roles are:
 
-Implemented:
+```text
+user
+admin
+```
 
--   Individual inventory units
+The authentication endpoint is:
+
+```http
+POST /auth/token
+```
+
+Authenticated API requests use:
+
+```http
+Authorization: Bearer <token>
+```
+
+The backend performs authorization checks independently of the client application.
+
+* * *
+
+## 4.2 Database Model
+
+The current database model is based on these core entities:
+
+```text
+User
+StorageLocation
+Product
+Inventory
+ShoppingList
+Transaction
+```
+
+Inventory is quantity-based.
+
+The application does not use a separate database row for every physical item.
+
+An inventory record contains a quantity and can include:
+
+-   Product
+-   Quantity
+-   Expiration date
+-   Storage location
+-   Status
+-   Image information
+-   User information
+-   Timestamps
+
+Inventory status is represented explicitly.
+
+The current implementation also supports missing inventory, which allows calculated stock to become negative without storing negative quantities in individual inventory records.
+
+* * *
+
+## 4.3 Inventory Management
+
+Implemented functionality includes:
+
+-   Quantity-based inventory
 -   Best-before dates
 -   Storage locations
--   Negative stock
--   Centralized stock-target logic
--   Consumption according to earliest best-before date
+-   Inventory status
+-   Negative calculated stock
+-   Product stock targets
+-   Inventory consumption
+-   Inventory correction
+-   Inventory transaction history
 
-The consumption strategy should technically be referred to as:
+Inventory consumption uses:
 
 **FEFO — First Expire, First Out**
 
-rather than FIFO, because the ordering criterion is the best-before date.
+The inventory record with the earliest applicable expiration date is selected first.
 
-### Shopping List
+This is intentionally FEFO rather than FIFO.
 
-Implemented:
+* * *
 
--   Automatic shopping-list generation
--   Minimum stock handling
--   Ideal stock handling
--   Negative stock calculation
--   Automatic recalculation after inventory changes
+## 4.4 Inventory Consumption
 
-### Expiration Overview
+Inventory consumption is performed through the product-specific API:
 
-Implemented:
+```http
+POST /products/{product_id}/consume
+```
 
--   Expired items
--   Items approaching their best-before date
--   Inventory-based expiration overview
+The backend determines which inventory records should be consumed.
 
-### Barcode Lookup
+The operation is performed server-side and uses database locking where required to prevent concurrent requests from consuming the same inventory incorrectly.
 
-Barcode lookup is implemented through Open Food Facts.
+Consumption can result in missing stock when the requested quantity exceeds the available quantity.
 
-The barcode is used to retrieve product information.
+* * *
 
-### Product Images
+## 4.5 Inventory Correction
+
+Inventory corrections are performed through:
+
+```http
+POST /products/{product_id}/correct
+```
+
+Corrections use a quantity delta and a reason.
+
+Example:
+
+```json
+{
+  "quantity_delta": -2,
+  "reason": "Damaged products"
+}
+```
+
+Corrections are administrator-only operations.
+
+Every inventory mutation should produce the appropriate transaction history.
+
+* * *
+
+## 4.6 Shopping List
+
+The shopping list is integrated with product stock targets.
+
+The system supports:
+
+-   Minimum stock
+-   Ideal stock
+-   Automatic shopping-list calculation
+-   Negative calculated stock
+-   Shopping-list status management
+-   Recalculation after inventory changes
+
+The current API exposes:
+
+```http
+GET /shopping-list
+PATCH /shopping-list/{product_id}
+```
+
+The shopping list is therefore not implemented as a separate generic item-management subsystem.
+
+* * *
+
+## 4.7 Expiration Overview
+
+The backend provides:
+
+```http
+GET /expiring
+```
+
+The endpoint returns active inventory approaching or exceeding its expiration date.
+
+The number of days can be specified through the `days` parameter.
+
+The dashboard also provides expiration-related information grouped into useful categories such as:
+
+-   Expired
+-   Urgent
+-   Soon
+-   Upcoming
+
+* * *
+
+## 4.8 Barcode Lookup
+
+Barcode lookup is implemented through:
+
+```http
+GET /scan/{barcode}
+```
+
+The backend first considers locally available product information and can use Open Food Facts for external product lookup.
+
+External product information does not automatically mean that a permanent local product record has been created.
+
+* * *
+
+## 4.9 Product Images
 
 Product images are stored outside PostgreSQL.
 
-Persistent application storage is located below:
+Persistent application data is stored below:
 
 ```text
 /data/foodstock
 ```
 
-The database stores references to the relevant files.
+Product image files are stored in the application's persistent data directory.
 
-### Web Interface
+The database stores the corresponding file reference.
 
-FoodStock-Home provides a Home Assistant-compatible web interface:
+The product image API is:
 
-```text
-http://<home-assistant-ip>:8000/ui/
+```http
+POST /products/{product_id}/image
 ```
 
-The current interface includes:
+Supported image formats are:
 
--   Login
--   Dashboard
--   Stock intake
--   Inventory consumption
--   Best-before-date management
--   Shopping list
--   Copy for AI
+```text
+image/jpeg
+image/png
+image/webp
+```
 
-### AI Prompt Export
+The upload size is limited by the backend.
 
-The endpoint:
+* * *
+
+## 4.10 Transaction History
+
+Inventory changes are recorded as transactions.
+
+The current transaction history is exposed through:
+
+```http
+GET /transactions
+```
+
+Transaction records can contain information such as:
+
+-   User
+-   Product
+-   Inventory record
+-   Event
+-   Quantity delta
+-   Reason
+-   Client operation ID
+-   Creation timestamp
+
+This is an inventory transaction history.
+
+It is not currently a generic application-wide audit framework.
+
+* * *
+
+## 4.11 Idempotent Operations
+
+Mutation requests support a client-generated:
+
+```text
+client_operation_id
+```
+
+This allows clients to safely retry operations without unintentionally applying the same inventory mutation multiple times.
+
+This mechanism is particularly important for mobile clients and unreliable network connections.
+
+* * *
+
+## 4.12 Dashboard
+
+The backend provides:
+
+```http
+GET /dashboard
+```
+
+The dashboard endpoint aggregates information required by the web/mobile user interface.
+
+It includes inventory and expiration information as well as shopping-list information.
+
+* * *
+
+## 4.13 AI Prompt Generation
+
+The backend provides:
 
 ```http
 GET /ai/prompt
 ```
 
-generates a structured recipe prompt from the current inventory.
+This generates a structured prompt based on the current inventory.
 
-The feature does not require a paid AI API.
+The feature does not require FoodStock to call a paid AI service.
 
-### FlutterFlow Specification
-
-The FlutterFlow Android application specification is documented in:
-
-```text
-KiPromptAndroidApp.md
-```
-
-This document is the development specification for FoodStock-Mobile.
+The generated prompt can be copied to an external AI service by the user.
 
 * * *
 
-# Phase 3 Acceptance Testing
+# 5\. Phase 4 — Web Interface
 
-The implementation must now be installed and tested on the Raspberry Pi.
+**Status: IMPLEMENTED**
 
-No real household inventory should be entered before the acceptance tests have passed.
+FoodStock includes a web interface served by the backend.
 
-## Test 1 — Home Assistant App Installation
+The interface provides the core workflows required to operate FoodStock through a browser.
 
-Install or update:
+Current workflows include:
 
-```text
-FoodStock-Home 1.0.2
-```
+-   Login
+-   Dashboard
+-   Product management
+-   Storage locations
+-   Inventory intake
+-   Inventory consumption
+-   Inventory correction
+-   Best-before-date management
+-   Shopping list
+-   Barcode lookup
+-   AI prompt export
 
-Verify:
-
--   App starts successfully
--   No Home Assistant errors are introduced
--   Existing Home Assistant Apps continue operating
--   FoodStock logs show normal startup
-
-## Test 2 — Configuration
-
-Configure:
-
--   PostgreSQL credentials
--   Dedicated JWT secret
--   Initial administrator account
-
-Secrets must not be committed to Git.
-
-## Test 3 — Health Endpoint
-
-Verify:
-
-```http
-GET /health
-```
-
-Expected result:
-
-```text
-HTTP 200
-```
-
-The response must indicate that the application is healthy.
-
-## Test 4 — API Documentation
-
-Open:
-
-```text
-/docs
-```
-
-Verify that the FastAPI OpenAPI documentation loads successfully.
-
-## Test 5 — Web Interface
-
-Open:
-
-```text
-/ui/
-```
-
-Verify:
-
--   Login works
--   Dashboard loads
--   No database errors are displayed
-
-## Test 6 — Storage Location
-
-Create:
-
-```text
-Test Location
-```
-
-Verify that the location is persisted.
-
-## Test 7 — Product
-
-Create a test product.
-
-Example:
-
-```text
-Name:
-Test Tomato Sauce
-
-Barcode:
-TEST-0001
-
-Minimum stock:
-2
-
-Ideal stock:
-5
-```
-
-Verify that the product can be retrieved again.
-
-## Test 8 — Inventory Unit
-
-Create an inventory unit with a known best-before date.
-
-Example:
-
-```text
-Product:
-Test Tomato Sauce
-
-Best-before date:
-2026-09-20
-
-Quantity:
-1
-```
-
-Verify that the inventory unit is persisted.
-
-## Test 9 — FEFO Consumption
-
-Create several inventory units with different best-before dates.
-
-Example:
-
-```text
-2026-09-20
-2026-09-15
-2026-10-01
-```
-
-Consume one unit.
-
-Expected result:
-
-```text
-2026-09-15
-```
-
-must be consumed first.
-
-## Test 10 — Shopping List
-
-Example:
-
-```text
-Current stock:
-1
-
-Minimum stock:
-2
-
-Ideal stock:
-5
-```
-
-Expected shopping quantity:
-
-```text
-5 - 1 = 4
-```
-
-Verify that the shopping list contains four units.
-
-## Test 11 — Negative Stock
-
-Consume more units than physically available.
-
-Example:
-
-```text
-Current stock:
-0
-
-Consume:
-1
-```
-
-Expected:
-
-```text
-Current stock:
--1
-```
-
-Verify that the shopping-list calculation handles the negative quantity correctly.
-
-## Test 12 — Audit History
-
-Perform:
-
--   Add inventory
--   Consume inventory
--   Correct inventory
-
-Verify that the corresponding events are recorded with:
-
--   User
--   Timestamp
--   Event type
--   Affected entity
--   Relevant quantity/change
-
-## Test 13 — Existing Home Assistant Installation
-
-After all tests, verify that:
-
--   Home Assistant remains operational
--   Existing Apps remain operational
--   PostgreSQL remains operational
--   Zigbee2MQTT remains operational
--   Other previously operational services remain operational
-
-Only after all acceptance tests pass is Phase 3 considered operationally complete.
+The web interface is intended to provide a usable administrative and household interface without requiring the mobile application.
 
 * * *
 
-# Phase 4 — Backup and Recovery
+# 6\. Phase 5 — Raspberry Pi Installation and Acceptance
 
-**Status: NOT STARTED**
+**Status: PENDING ACCEPTANCE**
 
-Before real household data is entered, configure:
+The backend implementation must be installed and validated on the target Raspberry Pi/Home Assistant environment before being considered operationally complete.
 
--   PostgreSQL backups
--   `/data/foodstock` backups
--   Home Assistant configuration backup
--   Secondary backup storage
+Acceptance testing should verify:
 
-A restoration test is mandatory.
+-   FoodStock starts correctly
+-   PostgreSQL connectivity works
+-   Authentication works
+-   Authorization works
+-   Database initialization works
+-   Product operations work
+-   Inventory operations work
+-   FEFO consumption works
+-   Shopping-list calculations work
+-   Expiration information works
+-   Barcode lookup works
+-   Product image handling works
+-   Transaction history works
+-   Dashboard works
+-   AI prompt generation works
+-   Existing Home Assistant services remain operational
 
-The backup process is considered incomplete until a test restoration succeeds.
+No production household inventory should be entered until the deployment has passed the required acceptance tests.
 
 * * *
 
-# Phase 5 — Secure Remote Access
+# 7\. Phase 6 — Backup and Recovery
 
-**Status: NOT STARTED**
+**Status: PLANNED**
 
-Initial remote-access architecture:
+A complete backup strategy must be established before FoodStock is used with important household data.
+
+Backups should include:
+
+-   PostgreSQL data
+-   `/data/foodstock`
+-   Product images
+-   Expiration images, if used
+-   Relevant application configuration
+-   Home Assistant configuration where required
+
+At least one backup copy should be stored separately from the primary Raspberry Pi storage.
+
+A backup is not considered valid until a restoration test has succeeded.
+
+The restoration procedure should verify:
+
+```text
+PostgreSQL
+     |
+     v
+FoodStock application data
+     |
+     v
+Application startup
+     |
+     v
+API health
+     |
+     v
+Authentication
+     |
+     v
+Inventory data
+     |
+     v
+Images
+```
+
+The current application does not use Alembic migrations. Database recovery must therefore follow the current SQLAlchemy initialization model.
+
+* * *
+
+# 8\. Phase 7 — Secure Remote Access
+
+**Status: PLANNED**
+
+The initial remote-access strategy is based on private network access and/or VPN connectivity.
+
+A possible architecture is:
 
 ```text
 FoodStock-Mobile
@@ -421,109 +505,232 @@ FoodStock-Mobile
 WireGuard VPN
        |
        v
-FRITZ!Box
-       |
-       v
 Home Network
        |
        v
 FoodStock-Home
+       |
+       v
+PostgreSQL
 ```
 
 Requirements:
 
--   No public PostgreSQL access
--   No direct PostgreSQL port forwarding
--   VPN authentication required
--   Only required services accessible
+-   PostgreSQL must never be publicly accessible.
+-   PostgreSQL must never be directly port-forwarded.
+-   Remote access must use an authenticated and appropriately protected connection.
+-   Only required services should be exposed.
+-   Production remote API access must use appropriate transport security.
 
-Before distributing the external version of FoodStock-Mobile, HTTPS must be configured appropriately.
+The exact VPN and TLS architecture remains a deployment decision.
 
 * * *
 
-# Phase 6 — FoodStock-Mobile
+# 9\. Phase 8 — FoodStock-Mobile
 
-**Status: NOT STARTED**
+**Status: PLANNED / IN DEVELOPMENT**
 
-FoodStock-Mobile will be implemented with FlutterFlow.
+FoodStock-Mobile is the planned native mobile client for FoodStock.
 
-The development specification is:
+The mobile application must communicate exclusively with the FoodStock API.
 
-```text
-KiPromptAndroidApp.md
-```
+It must never connect directly to PostgreSQL.
 
-Initial workflows:
+The planned core workflows are:
 
 1.  Login
 2.  Dashboard
 3.  Barcode scanning
 4.  Product lookup
 5.  Product creation
-6.  Local OCR
-7.  Best-before-date confirmation
-8.  Inventory intake
-9.  Inventory consumption
-10.  Shopping list
-11.  Expiration overview
-12.  Copy for AI
-13.  English/German localization
+6.  Best-before-date capture
+7.  Inventory intake
+8.  Inventory consumption
+9.  Shopping list
+10.  Expiration overview
+11.  AI prompt export
+12.  English/German localization
+
+The mobile client must respect the backend authorization model.
+
+Administrator-only functionality must not be treated as secure merely because it is hidden from the mobile UI.
 
 * * *
 
-# Phase 7 — Offline Synchronization
+# 10\. Phase 9 — Offline Support and Synchronization
 
 **Status: PLANNED**
 
-Implement:
+Offline operation is a future capability.
+
+The planned architecture includes:
 
 -   Local cache
 -   Local operation queue
--   Retry
--   Idempotency
+-   Retry handling
+-   Client operation IDs
 -   Server synchronization
 -   Conflict handling
+-   Recovery after connectivity loss
 
-Inventory mutations must remain server-authoritative.
+The backend remains authoritative for inventory mutations.
+
+The mobile client must not independently calculate and permanently commit inventory state that conflicts with the server.
+
+A future synchronization implementation should build on the existing `client_operation_id` mechanism rather than introducing an unrelated idempotency mechanism.
 
 * * *
 
-# Phase 8 — Optional Features
+# 11\. Phase 10 — Advanced Mobile Features
 
-Possible future extensions:
+**Status: FUTURE**
 
--   Stored best-before-date photographs
--   Direct paid AI integration
--   Meal planning
+Potential mobile enhancements include:
+
+-   Local OCR
+-   Improved expiration-date recognition
+-   Camera-assisted product entry
+-   Improved barcode workflows
+-   Offline-first operation
+-   Push notifications
+-   Advanced shopping workflows
+
+These features should only be introduced when they provide a clear benefit without compromising the reliability of the core inventory system.
+
+* * *
+
+# 12\. Phase 11 — Home Assistant Integration
+
+**Status: FUTURE**
+
+Possible Home Assistant integrations include:
+
 -   Home Assistant sensors
 -   Home Assistant notifications
--   Home Assistant dashboard
+-   Home Assistant dashboard cards
+-   Inventory-related automations
+-   Low-stock notifications
+-   Expiration notifications
 -   Voice interaction
 
-These features must not be allowed to complicate the initial stable application unnecessarily.
+These features should remain optional.
+
+The core FoodStock backend must remain usable independently of advanced Home Assistant integrations.
 
 * * *
 
-# Release Principle
+# 13\. Phase 12 — Optional AI Features
 
-The project should progress in controlled increments.
+**Status: FUTURE**
 
-A phase is not considered complete merely because the code exists.
+The current application already provides AI prompt generation through:
 
-For infrastructure phases, completion requires:
+```http
+GET /ai/prompt
+```
+
+FoodStock does not currently require a paid AI provider.
+
+Possible future enhancements include:
+
+-   Direct AI provider integration
+-   Recipe generation
+-   Meal planning
+-   Ingredient substitution
+-   Household-specific recipe preferences
+-   AI-assisted shopping suggestions
+
+Direct AI integration must remain optional.
+
+The core inventory system must not depend on an external AI service.
+
+* * *
+
+# 14\. Future Database Improvements
+
+The following are potential future improvements:
+
+-   Versioned database migrations
+-   More advanced indexing
+-   Database maintenance tooling
+-   More detailed transaction reporting
+-   Generic audit logging if required
+-   Improved backup automation
+-   Database health monitoring
+
+These features must not be documented as current functionality until implemented.
+
+* * *
+
+# 15\. Release and Completion Principle
+
+FoodStock development follows an incremental approach.
+
+A phase is considered complete only when its acceptance criteria have been met.
+
+The general process is:
 
 ```text
 Implementation
-     ↓
+      |
+      v
 Installation
-     ↓
-Functional test
-     ↓
-Regression test
-     ↓
-Backup verification where applicable
-     ↓
-Phase accepted
+      |
+      v
+Functional Testing
+      |
+      v
+Regression Testing
+      |
+      v
+Operational Validation
+      |
+      v
+Phase Accepted
 ```
 
-Real household data should only be entered after the corresponding phase has passed its acceptance criteria.
+For infrastructure or data-related changes, backup and recovery validation must also be performed where applicable.
+
+* * *
+
+# 16\. Priority Order
+
+The recommended development priority is:
+
+```text
+1. Raspberry Pi installation
+2. Acceptance testing
+3. Backup and recovery
+4. Secure remote access
+5. FoodStock-Mobile
+6. Offline synchronization
+7. Advanced mobile features
+8. Home Assistant integrations
+9. Optional AI features
+```
+
+The priority may change based on actual user requirements, deployment findings and acceptance-test results.
+
+* * *
+
+# 17\. Current Project Principle
+
+The roadmap must always distinguish between:
+
+```text
+IMPLEMENTED
+```
+
+and:
+
+```text
+PLANNED
+```
+
+Implemented backend behavior must be documented from the current source code.
+
+Planned features must not be presented as existing API endpoints, database tables, application functionality or deployment capabilities.
+
+When the implementation changes, the corresponding documentation and roadmap status should be updated in the same development cycle.
+
+The roadmap is therefore a planning document, not a substitute for the API, database or architecture documentation.
