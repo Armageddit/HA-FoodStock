@@ -1,174 +1,334 @@
-# FoodStock Project Overview
+## Purpose
 
-## 1\. Purpose
+FoodStock is a private, self-hosted household food inventory application.
 
-FoodStock is a self-hosted household food inventory management system.
+It manages:
 
-It provides a central inventory shared by multiple household users and is designed to answer:
+-   products
+-   inventory entries
+-   expiration dates
+-   storage locations
+-   shopping-list state
+-   inventory transactions
+-   household users
+-   product images
+-   barcode lookup
+-   recipe prompt generation
 
--   What food do we have?
--   Where is it stored?
--   How much is available?
--   What expires soon?
--   What has already expired?
--   What needs to be purchased?
--   What should be consumed first?
--   Which products are below their configured minimum stock?
--   Which foods can be used for recipe suggestions?
+FoodStock is designed for a small household environment. It does not require a cloud database or a permanent external service.
 
-The backend is provided by the **FoodStock Backend** and is deployed as part of the **FoodStock-Home** Home Assistant application. The Android client is called **FoodStock-Mobile**.
+## Applications
 
-## 2\. Project Goals
+### FoodStock-Home
 
-FoodStock is designed around the following goals:
+FoodStock-Home is the Home Assistant application that hosts the FoodStock backend.
 
--   Self-hosted operation
--   Household-owned data
--   PostgreSQL as the persistent database
--   Multiple authenticated users
--   User and administrator roles
--   Barcode-based product lookup
--   Local/mobile OCR for expiration dates
--   Inventory tracking with expiration dates
--   Storage-location management
--   Shopping-list management
--   FEFO-based consumption
--   Support for inventory shortages
--   Server-side inventory and shopping-list business logic
--   Optional integration with Open Food Facts for product lookup
--   Future integration with Home Assistant
--   Future direct AI integration
+It provides:
 
-The system is intentionally designed for a private household rather than Internet-scale operation.
+-   FastAPI REST API
+-   authentication
+-   authorization
+-   PostgreSQL access
+-   product management
+-   inventory management
+-   shopping-list logic
+-   expiration queries
+-   transaction history
+-   product image storage
+-   recipe prompt generation
+-   a server-rendered web interface
 
-## 3\. Current Implementation
+### FoodStock-Mobile
 
-The current backend is implemented with:
+FoodStock-Mobile is the planned Android client.
 
--   Python
--   FastAPI
--   Pydantic
--   SQLAlchemy
--   PostgreSQL
--   JWT-based authentication
--   bcrypt password hashing
+The mobile client is responsible for:
 
-The current application code is located primarily below:
+-   barcode scanning
+-   local OCR
+-   user interaction
+-   displaying inventory
+-   product creation
+-   inventory operations
+-   shopping-list interaction
+
+The mobile application must communicate with the FoodStock API. It must never access PostgreSQL directly.
+
+Offline-first synchronization is a planned capability and is not part of the current backend API.
+
+## Current Architecture
 
 ```text
-foodstock/
-└── app/
-    ├── main.py
-    ├── models.py
-    ├── database.py
-    ├── schemas.py
-    └── ...
+Android / Web Browser
+        |
+        | HTTP
+        v
+FoodStock Backend
+        |
+        | SQLAlchemy
+        v
+PostgreSQL
 ```
 
-The FastAPI application exposes authentication, user, product, storage-location, inventory, shopping-list, transaction, barcode and AI-prompt endpoints.
+Product barcode lookup may also use:
 
-The backend also performs the critical inventory operations server-side, including inventory consumption and correction.
+```text
+FoodStock Backend
+        |
+        | HTTPS
+        v
+Open Food Facts
+```
 
-## 4\. Product and Inventory Model
+Open Food Facts is an external lookup source. Its data is treated as untrusted product information until accepted by the user.
 
-A **product** represents reusable product information.
+## Deployment
 
-Examples of product information include:
+The current target environment is:
 
--   Product name
--   Barcode
--   Manufacturer
--   Unit
--   Default storage location
--   Minimum stock
--   Ideal stock
--   Product image
+-   Home Assistant OS
+-   Raspberry Pi
+-   ARM64
+-   PostgreSQL / TimescaleDB Home Assistant application
+-   FoodStock Home Assistant application
 
-A product does not represent a single physical item.
+FoodStock does not require TimescaleDB-specific features.
 
-Physical stock is represented by records in the `inventory` table. An inventory record contains, among other fields:
+PostgreSQL must not be exposed directly to the Internet.
 
--   Product
--   Quantity
--   Expiration date
--   Storage location
--   Status
--   Optional image path
--   User who added it
--   Creation timestamp
--   Consumption timestamp
+Remote access should use a private VPN or another explicitly secured access layer.
 
-The current implementation therefore supports quantities on inventory records. It does **not** require every physical item to have its own database row.
+## Current Implementation Status
 
-## 5\. Inventory Behavior
+The current backend implements:
 
-Inventory operations are handled by the backend.
+-   JWT authentication
+-   user and administrator roles
+-   products
+-   storage locations
+-   inventory entries
+-   FEFO consumption
+-   negative inventory through missing inventory entries
+-   shopping-list calculation
+-   expiration queries
+-   barcode lookup
+-   product images
+-   transaction history
+-   recipe prompt generation
+-   web UI
 
-Consumption uses **FEFO (First Expire, First Out)**. Inventory records are selected according to their expiration date, with the creation time used as an additional ordering criterion.
+The following are not currently implemented:
 
-The client must not replace the complete inventory quantity based on stale locally cached data.
+-   refresh tokens
+-   logout/token revocation
+-   API version prefix
+-   offline synchronization API
+-   generic file-object storage
+-   dedicated audit-event table
+-   Alembic migration infrastructure
+-   direct AI API integration
+-   meal planning
+-   Home Assistant entity integration
 
-Instead, inventory changes are sent to the backend as explicit operations such as:
+* * *
 
--   Add inventory
--   Consume inventory
--   Correct inventory
+# 01 — Requirements
 
-The backend performs the corresponding database operation.
+## Users
 
-Inventory records can also represent shortages. The current implementation uses the `missing` inventory status for stock that could not be fulfilled by the available inventory.
-
-## 6\. Users and Roles
-
-FoodStock currently supports two application roles:
+FoodStock currently supports two roles.
 
 ### User
 
 A normal user can:
 
--   Authenticate
--   View products
--   Add products
--   Add inventory
--   Consume inventory
--   Correct permitted inventory data
--   View inventory
--   View expiration information
--   Manage shopping-list state
--   Generate the available AI recipe prompt
+-   authenticate
+-   view products
+-   create products
+-   view inventory
+-   add inventory
+-   consume inventory
+-   view expiration information
+-   view the shopping list
+-   update shopping-list status
+-   generate a recipe prompt
 
 ### Administrator
 
-An administrator has additional management permissions, including:
+An administrator can additionally:
 
--   User management
--   Product management
--   Storage-location management
--   Product deactivation
--   Product restoration where supported
--   Administrative inventory corrections
+-   create users
+-   update users
+-   activate or deactivate users
+-   change user roles
+-   manage storage locations
+-   update products
+-   deactivate products
+-   upload product images
+-   correct inventory
+-   view transaction history
 
-Authorization is enforced by the backend.
+There is no separate database-backed role table. Roles are represented by the `UserRole` enum.
 
-The current implementation stores the role directly on the user record. Roles are not implemented as a separate database table.
+## Products
 
-## 7\. Barcode Processing
+A product represents reusable product information.
 
-Barcode recognition is intended to take place on the mobile device.
+A product contains:
 
-The backend receives the barcode value and attempts to resolve it against the local product database.
+-   name
+-   optional barcode
+-   optional manufacturer
+-   optional category
+-   unit
+-   optional product image
+-   optional default storage location
+-   minimum stock
+-   optional ideal stock
+-   active state
 
-If a local product is not available, the backend can use external product information sources such as Open Food Facts where supported.
+A product does not represent a physical stock item.
 
-External product information must not silently overwrite trusted local product information.
+## Inventory
 
-The user remains responsible for confirming imported product information before it becomes trusted local product data.
+Inventory is represented by inventory entries.
 
-## 8\. Expiration Dates and OCR
+An inventory entry contains:
 
-Expiration-date OCR is a mobile/client-side concern.
+-   product
+-   quantity
+-   optional expiration date
+-   optional storage location
+-   status
+-   optional image
+-   user who added it
+-   creation timestamp
+-   optional consumption timestamp
 
-The intended workflow is:
+An inventory entry may contain a quantity greater than one. Therefore the current model represents **inventory batches/entries**, not strictly one database row per physical item.
+
+This distinction is important.
+
+Example:
+
+```text
+Product: Milk
+
+Inventory entry A:
+quantity = 3
+expiration_date = 2026-09-10
+
+Inventory entry B:
+quantity = 2
+expiration_date = 2026-09-15
+```
+
+## Inventory Consumption
+
+Consumption is handled by the server.
+
+The client sends a consumption command. It does not send a calculated replacement stock value.
+
+Active inventory entries are processed using FEFO:
+
+> First Expire, First Out
+
+The ordering is based on:
+
+1.  entries with an expiration date before entries without one
+2.  earliest expiration date
+3.  earliest `added_at` timestamp
+
+The database rows are locked during consumption to prevent conflicting concurrent updates.
+
+If the requested consumption exceeds available stock, the missing quantity is represented by a `MISSING` inventory entry.
+
+This allows negative stock to be represented explicitly.
+
+## Shopping List
+
+The backend calculates required purchase quantities centrally.
+
+If:
+
+```text
+current_stock < minimum_stock
+```
+
+the product requires replenishment.
+
+If `ideal_stock` is configured:
+
+```text
+purchase_quantity = ideal_stock - current_stock
+```
+
+Otherwise:
+
+```text
+purchase_quantity = minimum_stock - current_stock
+```
+
+Negative stock is supported.
+
+Example:
+
+```text
+current stock = -2
+minimum stock = 5
+ideal stock = 10
+```
+
+The required quantity is:
+
+```text
+10 - (-2) = 12
+```
+
+The shopping list uses these states:
+
+-   `needed`
+-   `on_list`
+-   `purchased`
+-   `stocked`
+
+## Expiration
+
+The backend supports expiration queries using a configurable query horizon.
+
+The dashboard categorizes results as:
+
+-   expired
+-   urgent: up to 3 days
+-   soon: 4–7 days
+-   upcoming: 8–14 days
+
+These categories are currently fixed in the backend and are not yet user-configurable.
+
+## Barcode Lookup
+
+Barcode recognition is expected to happen on the client.
+
+The backend provides lookup through:
+
+```text
+GET /scan/{barcode}
+```
+
+The backend:
+
+1.  checks the local product database
+2.  returns the local product if found
+3.  otherwise queries Open Food Facts
+4.  returns an external product suggestion if available
+
+External information must not silently overwrite local product data.
+
+## OCR
+
+OCR is a client-side responsibility.
+
+The expected workflow is:
 
 ```text
 Camera
@@ -183,202 +343,7 @@ Candidate expiration date
 User confirmation
   |
   v
-Backend
+FoodStock API
 ```
 
-An OCR result must not be treated as a confirmed expiration date without user confirmation.
-
-The current backend stores the confirmed expiration date on the inventory record.
-
-Expiration images are not currently a general-purpose backend feature. Any future persistent expiration-image workflow must therefore be treated as a planned extension rather than as an existing capability.
-
-## 9\. Product Images
-
-Product images are supported by the backend.
-
-The current implementation stores an image path/reference on the corresponding product or inventory record rather than storing binary image data directly in PostgreSQL.
-
-The current implementation uses application storage for uploaded images.
-
-A future dedicated file/object metadata model may be introduced if the application requires more advanced file management.
-
-## 10\. Shopping List
-
-The shopping list is based on product stock levels.
-
-The intended stock rule is:
-
-```text
-current_stock < minimum_stock
-```
-
-When a product falls below its minimum stock, it can be represented on the shopping list.
-
-If an ideal stock level is configured, the target purchase quantity is based on the ideal stock. Otherwise, the minimum stock is used.
-
-Conceptually:
-
-```text
-if ideal_stock is configured:
-    purchase_quantity = ideal_stock - current_stock
-else:
-    purchase_quantity = minimum_stock - current_stock
-```
-
-The backend is responsible for applying the relevant shopping-list logic.
-
-The current shopping-list implementation supports explicit shopping-list states rather than treating the list as a simple boolean flag.
-
-## 11\. Recipe / AI Prompt Support
-
-The first AI-related feature does not require a direct AI service.
-
-The backend can generate a structured recipe prompt based on the available food inventory.
-
-The intended priority is:
-
-1.  Food expiring soonest
-2.  Other available food
-3.  Minimal additional purchases
-
-The generated prompt can then be copied or passed to an external AI service by the client.
-
-Direct integration with an AI provider is a future feature.
-
-## 12\. Home Assistant Integration
-
-FoodStock-Home is designed to run as a Home Assistant application.
-
-Home Assistant provides the deployment environment, lifecycle management and application storage.
-
-A deeper Home Assistant integration is planned but is not required for the core inventory backend.
-
-Future integration may provide:
-
--   Sensors
--   Notifications
--   Dashboard cards
--   Automations
--   Voice interaction
-
-The core FoodStock backend should remain usable without tightly coupling its business logic to Home Assistant APIs.
-
-## 13\. Privacy and Data Ownership
-
-FoodStock is designed for household-controlled data.
-
-The normal application architecture does not require a cloud database.
-
-PostgreSQL is used as the backend database and should not be exposed directly to mobile clients.
-
-Mobile clients communicate with the FoodStock Backend rather than connecting directly to PostgreSQL.
-
-External services are only required for optional features such as external product-data lookup.
-
-## 14\. Initial Non-Goals
-
-The following features are not part of the current core implementation:
-
--   Direct paid AI API integration
--   Automatic meal planning
--   Advanced nutritional analysis
--   Public inventory sharing
--   Multi-household cloud synchronization
--   Direct Internet exposure of PostgreSQL
--   Complex Home Assistant dashboards
--   Fully automatic image recognition of food without a barcode
--   Persistent expiration-image management as a complete workflow
--   Dedicated offline synchronization infrastructure
-
-These features may be introduced later without changing the basic purpose of FoodStock.
-
-## 15\. Component Names
-
-Component
-
-Official Name
-
-Home Assistant application
-
-FoodStock-Home
-
-Android application
-
-FoodStock-Mobile
-
-Backend
-
-FoodStock Backend
-
-Database
-
-PostgreSQL
-
-Repository
-
-HA-FoodStock
-
-## 16\. Language Policy
-
-Technical documentation is written in English.
-
-FoodStock-Mobile is intended to support:
-
--   English
--   German
-
-The mobile application should normally follow the Android/device language while also allowing the user to select a language manually.
-
-## 17\. Design Principles
-
-### Server-side business logic
-
-Critical business rules belong to the backend.
-
-This includes:
-
--   Inventory mutations
--   FEFO consumption
--   Inventory shortage handling
--   Authorization
--   Shopping-list calculations
--   Data validation
-
-The mobile application must not independently implement a conflicting version of these rules.
-
-### Transactional inventory operations
-
-Inventory changes are represented by explicit backend operations rather than blind quantity overwrites.
-
-This is required to prevent stale-client updates from silently replacing concurrent changes.
-
-### Minimal user interaction
-
-The normal barcode and expiration-date workflow should require as few user interactions as practical while retaining explicit confirmation where data may be ambiguous.
-
-### Safe automation
-
-Automatically detected information, especially OCR results, must not silently become trusted inventory data.
-
-### Privacy
-
-Household inventory data should remain under the control of the household hosting the application.
-
-## 18\. Documentation Status
-
-This document describes the project at a high level.
-
-Detailed implementation information is maintained separately:
-
--   `01-requirements.md` — functional requirements
--   `02-architecture.md` — system architecture
--   `03-backend.md` — backend implementation
--   `04-database.md` — database model
--   `05-api.md` — HTTP API
--   `06-mobile-app.md` — mobile application
--   `07-localization.md` — localization
--   `08-security-and-operations.md` — security and operation
--   `09-development-roadmap.md` — development roadmap
--   `10-architecture-decisions.md` — architecture decisions
-
-When documentation conflicts with the implemented backend, the current implementation and its API/schema definitions are the source of truth until the documentation is updated.
+An OCR result must never be persisted as a confirmed expiration date without user confirmation.

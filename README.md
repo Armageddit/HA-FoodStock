@@ -2,9 +2,11 @@
 
 FoodStock is a private, self-hosted food inventory management system for households.
 
-The system is designed to manage food products, individual inventory units, expiration dates, storage locations, shopping lists and future recipe-assistance features.
+It is designed to manage food products, stock units, expiration dates, storage locations, shopping lists, and recipe-assistance workflows while keeping the data under the user's control.
 
-The primary goals are:
+## Goals
+
+FoodStock is designed around the following principles:
 
 -   Self-hosted operation
 -   No mandatory cloud database
@@ -15,252 +17,376 @@ The primary goals are:
 -   Local barcode scanning
 -   Local expiration-date OCR
 -   Centralized server-side business logic
--   Reliable inventory transactions
+-   Reliable and auditable inventory transactions
 -   English and German mobile application UI
--   English-only technical documentation
+-   English technical documentation
 -   Long-term maintainability
 
-## Application Names
+## Architecture
 
-The project consists of two clearly separated applications.
+FoodStock consists of two clearly separated applications.
 
 ### FoodStock-Home
 
-`FoodStock-Home` is the Home Assistant App running on the Raspberry Pi.
+`FoodStock-Home` is the Home Assistant App running on the household's Raspberry Pi.
 
-It contains the FoodStock backend and provides:
+It provides:
 
 -   REST API
--   Business logic
 -   Authentication and authorization
+-   Server-side business logic
 -   PostgreSQL connectivity
 -   Product management
 -   Inventory management
--   Shopping-list logic
+-   Shopping-list management
 -   Expiration-date calculations
--   Audit logging
--   File storage
+-   Inventory transaction history
+-   Product image storage
+-   Web interface
 -   Future Home Assistant integration
+
+The backend is the only component that communicates directly with PostgreSQL.
 
 ### FoodStock-Mobile
 
 `FoodStock-Mobile` is the Android application used by household members.
 
-It provides:
+It is responsible for the user-facing mobile experience, including:
 
 -   Barcode scanning
 -   Product lookup
 -   Product creation
--   Local OCR
+-   Local expiration-date OCR
 -   Inventory management
 -   Expiration-date management
 -   Shopping-list management
+-   Offline-first operation
+-   Synchronization with FoodStock-Home
 -   Recipe prompt generation
--   Offline-first functionality
 -   English and German UI
+
+Barcode recognition and OCR are performed locally on the Android device where possible.
+
+## System Architecture
+
+```text
+┌─────────────────────┐
+│   FoodStock-Mobile  │
+│      Android       │
+└──────────┬──────────┘
+           │
+           │ REST API
+           │
+           ▼
+┌─────────────────────┐
+│   FoodStock-Home    │
+│    Home Assistant   │
+│                     │
+│  FastAPI Backend    │
+│  Business Logic     │
+│  Authentication     │
+│  Web Interface      │
+└──────────┬──────────┘
+           │
+           │ SQL
+           │
+           ▼
+┌─────────────────────┐
+│     PostgreSQL      │
+└─────────────────────┘
+```
+
+The mobile application must never connect directly to PostgreSQL.
+
+All business-critical operations are performed by the backend. This includes inventory changes, stock calculations, consumption ordering, shopping-list logic, and transaction recording.
+
+## Inventory Model
+
+FoodStock manages inventory as individual stock units associated with products and storage locations.
+
+Each stock unit can contain information such as:
+
+-   Quantity
+-   Best-before date
+-   Storage location
+-   Stock status
+-   Creation or intake information
+
+### FEFO consumption
+
+FoodStock uses **FEFO (First Expire, First Out)** for stock consumption.
+
+When stock is consumed, units with the earliest best-before date are consumed first.
+
+This is intentional: for food inventory, expiration date is more relevant than simple insertion order.
+
+### Negative stock
+
+FoodStock supports negative stock situations.
+
+When consumption exceeds physically available stock, the missing quantity is represented explicitly rather than silently discarded.
+
+This allows the system to preserve the difference between:
+
+-   physically available stock
+-   confirmed missing stock
+-   historical inventory changes
+
+All inventory-changing operations are recorded in the transaction history.
+
+## Idempotent Operations
+
+The backend supports client operation identifiers for inventory-changing requests.
+
+This is important for the mobile application's offline-first architecture.
+
+A mobile client may safely retry an operation after a network interruption without unintentionally applying the same inventory change twice.
+
+The backend remains authoritative for the final inventory state.
+
+## Database
+
+FoodStock uses PostgreSQL as its central relational database.
+
+The current Home Assistant installation uses the existing PostgreSQL/TimescaleDB App.
+
+FoodStock does not currently depend on TimescaleDB-specific functionality.
+
+The mobile application never accesses the database directly.
 
 ## Server
 
-The server is a Raspberry Pi 4 with:
+The initial target platform is:
 
+-   Raspberry Pi 4
 -   4 GB RAM
 -   USB 3 SSD
 -   Home Assistant OS
 -   24/7 operation
 
-The existing Home Assistant installation must remain unaffected.
+FoodStock is designed to run alongside the existing Home Assistant installation without replacing or modifying the underlying Home Assistant OS environment.
 
 FoodStock must not install a conventional Docker environment directly on the Home Assistant OS host.
 
-## Database
+## Network and Remote Access
 
-PostgreSQL is the central relational database.
+The recommended initial deployment keeps FoodStock inside the home network.
 
-The current installation uses the existing PostgreSQL/TimescaleDB Home Assistant App.
-
-FoodStock does not depend on Timescale-specific features during the initial implementation.
-
-## Backend
-
-The backend is implemented with FastAPI.
-
-The backend is the only component allowed to communicate directly with PostgreSQL.
-
-The Android application must never connect directly to PostgreSQL.
-
-## Mobile Architecture
-
-```text
-FoodStock-Mobile
-       |
-       | HTTP
-       |
-       v
-FoodStock-Home
-       |
-       v
-FoodStock Backend
-       |
-       v
-PostgreSQL
-```
-
-Barcode recognition and OCR happen locally on the Android device.
-
-## Remote Access
-
-Remote access is intended to use VPN.
-
-Preferred initial model:
+Remote access is provided through VPN, for example:
 
 ```text
 Android
-   |
-   v
-WireGuard / FRITZ!Box VPN
-   |
-   v
+   │
+   │ WireGuard / FRITZ!Box VPN
+   ▼
 Home Network
-   |
-   v
+   │
+   ▼
 Raspberry Pi
-   |
-   v
+   │
+   ▼
 FoodStock-Home
 ```
 
-No PostgreSQL port may be exposed to the Internet.
+PostgreSQL must never be exposed directly to the Internet.
 
-## Documentation Language
+For external mobile access beyond a trusted VPN environment, HTTPS should be provided through an appropriate reverse proxy or ingress layer.
 
-All technical documentation is written in English.
+## Web Interface
+
+FoodStock-Home provides a web interface for administration and basic inventory operations.
+
+The interface is available at:
+
+```text
+http://<home-assistant-ip>:8000/ui/
+```
+
+The current interface includes:
+
+-   Login
+-   Dashboard
+-   Product management
+-   Stock intake
+-   Stock consumption
+-   Expiration overview
+-   Shopping list
+-   AI prompt generation
+
+The FastAPI documentation is available at:
+
+```text
+http://<home-assistant-ip>:8000/docs
+```
+
+The health endpoint is:
+
+```text
+http://<home-assistant-ip>:8000/health
+```
+
+## API
+
+FoodStock-Mobile communicates with FoodStock-Home through the REST API.
+
+The backend exposes functionality for:
+
+-   Authentication
+-   Products
+-   Inventory
+-   Storage locations
+-   Shopping lists
+-   Inventory transactions
+-   Expiration information
+-   Recipe-AI prompt generation
+
+The API is the contract between FoodStock-Mobile and FoodStock-Home.
+
+Business rules that must be enforced consistently are implemented on the server rather than relying on the mobile client.
+
+The detailed API contract is documented separately in the project documentation.
+
+## Current Status
+
+### FoodStock-Home
+
+The current development version is **1.0.2**.
+
+Implemented functionality includes:
+
+-   Home Assistant App for ARM64
+-   FastAPI backend
+-   PostgreSQL connectivity
+-   JWT authentication
+-   User and administrator roles
+-   Product management
+-   Inventory management
+-   Storage locations
+-   Shopping-list management
+-   Inventory transaction history
+-   FEFO stock consumption
+-   Negative stock handling
+-   Target and ideal stock-level logic
+-   Automatic shopping-list generation
+-   Expiration overview
+-   Open Food Facts barcode lookup
+-   Persistent product images
+-   Web interface
+-   Recipe-AI prompt generation
+
+The current development focus is validation of the complete Home Assistant installation and end-to-end workflows on the target Raspberry Pi.
+
+### FoodStock-Mobile
+
+The Android application is the next major development phase.
+
+The current mobile specification is documented in:
+
+`KiPromptAndroidApp.md`
+
+The planned mobile workflows include:
+
+-   Login
+-   Barcode scanning
+-   Product lookup
+-   Product creation
+-   Expiration-date OCR
+-   Inventory operations
+-   Shopping-list management
+-   Offline operation
+-   Synchronization
+-   Recipe assistance
+
+## Validation
+
+Before real household inventory data is entered, the installation should be validated with test data.
+
+At minimum, the following workflows should be verified:
+
+1.  Create a storage location.
+2.  Create a product.
+3.  Add multiple stock units with different best-before dates.
+4.  Verify FEFO consumption.
+5.  Verify negative stock handling.
+6.  Verify transaction history.
+7.  Verify automatic shopping-list generation.
+8.  Verify expiration information.
+9.  Verify product image storage.
+10.  Verify authentication and authorization.
+
+Database backups should also be tested by performing an actual restoration, not only by verifying that a backup file was created.
+
+## Backup and Recovery
+
+FoodStock data consists of both database data and persistent application files.
+
+Backups should therefore cover:
+
+-   PostgreSQL database
+-   `/data/foodstock`
+
+Backups should be stored on a separate storage target.
+
+A backup is considered valid only after a restoration test has successfully recovered the required data.
+
+## Documentation
+
+Technical documentation is written in English.
 
 The mobile application supports:
 
 -   English
 -   German
 
-The application language must be independent from the documentation language.
+The application language is independent of the documentation language.
 
-## Development Principle
+Project documentation covers architecture, requirements, backend implementation, database design, API behavior, security, operations, and architectural decisions.
+
+## Development Principles
 
 FoodStock is developed incrementally.
 
-No large batch of installation instructions should be given to the user.
+Changes should be implemented against the current architecture and documented behavior.
 
-Each implementation step follows:
+The backend remains authoritative for:
 
-1.  Goal
-2.  What to click
-3.  What to enter
-4.  Expected result
-5.  Test
-6.  Only then continue to the next step
+-   Inventory state
+-   Inventory transactions
+-   FEFO consumption
+-   Authentication and authorization
+-   Shopping-list calculations
+-   Data validation
+-   Idempotent inventory operations
 
-## Current Project Status
+The mobile application must not duplicate server-side business rules in a way that could result in conflicting inventory states.
 
-### Completed
+## Roadmap
 
--   Home Assistant OS environment assessed
--   PostgreSQL/TimescaleDB installed
--   Database `foodstock` created
--   PostgreSQL is not externally exposed
--   pgAdmin4 available for administration
--   GitHub repository operational
--   Home Assistant recognizes the FoodStock repository
--   FoodStock Home Assistant App installs successfully
--   ARM64 works
--   FastAPI starts
--   `/health` endpoint works
--   Database configuration works
--   PostgreSQL connectivity works
--   `SELECT 1` works
--   Beta update from `0.1.0` to `0.1.1` works
+The following features are planned for future development:
 
-### Current Phase
+-   Complete FoodStock-Mobile Android application
+-   Robust offline synchronization
+-   Optional storage of best-before-date photos
+-   Home Assistant dashboard integration
+-   Home Assistant notifications
+-   Meal planning
+-   Optional integration with external AI services
+-   Additional reporting and inventory insights
+-   Product groups and intelligent product equivalence
 
-## Phase 3 – FoodStock Backend and Home Assistant Interface
+## Architectural Changes
 
-**Implemented – installation and functional testing on the Raspberry Pi are still pending.**
+The architecture defined by the project documentation is binding.
 
-The current add-on version is **1.0.2** and includes:
+Fundamental architectural changes should be evaluated before implementation.
 
--   ✅ **Home Assistant add-on for ARM64** with FastAPI and PostgreSQL connectivity.
--   ✅ **User authentication with JWT**, including user and administrator roles.
--   ✅ **Relational database tables** for products, individual stock units, storage locations, shopping lists, and change history.
--   ✅ **FIFO consumption** based on the earliest best-before date, support for negative stock levels, and centralized target/ideal stock-level logic.
--   ✅ **Automatic shopping list generation**, expiration overview, barcode lookup via Open Food Facts, and persistent product images stored under `/data/foodstock`.
--   ✅ **Home Assistant-compatible web interface** available at `http://<home-assistant-ip>:8000/ui/`, including login, dashboard, stock intake, consumption, expiration dates, shopping list, and **“Copy for AI”** functionality.
--   ✅ **`GET /ai/prompt`** generates a structured, free recipe-AI prompt directly from the current inventory.
--   ✅ **Complete FlutterFlow development specification** documented in `KiPromptAndroidApp.md`.
-
-## Next Steps to Complete the App
-
-### 1\. Update and test the add-on
-
-Update FoodStock to version **1.0.2** in Home Assistant and configure secure database credentials, a dedicated JWT secret, and the initial administrator account according to `foodstock/README.md`.
-
-Then test the following endpoints from the home network:
-
--   `/health`
--   `/docs`
--   `/ui/`
-
-### 2\. Test the database and user interface
-
-At minimum:
-
--   Create one storage location.
--   Create one product.
--   Add a stock unit with a best-before date.
--   Verify FIFO consumption.
--   Verify automatic shopping list generation.
-
-Only after these tests have been completed should the real inventory data be entered.
-
-### 3\. Set up backups
-
-Configure automated backups of the PostgreSQL database dump and `/data/foodstock` to a second storage target.
-
-Afterwards, perform a **test restoration** to verify that the backup can actually be recovered successfully.
-
-### 4\. Secure external access
-
-External access should only be provided through the **FRITZ!Box WireGuard VPN**.
-
-PostgreSQL must **never be exposed directly to the internet**. Before distributing the external app, HTTPS should be configured through a suitable reverse proxy or ingress.
-
-### 5\. Build the FlutterFlow app
-
-Use `KiPromptAndroidApp.md` as the development specification.
-
-Configure the API base URL for access through the home network/VPN and test the following workflows on an Android device:
-
--   Login
--   Barcode scanning
--   OCR
--   Offline synchronization
-
-### 6\. Future enhancements
-
-Possible later extensions include:
-
--   Optional storage of photos of best-before dates.
--   Direct integration with a paid AI service.
--   Meal planning.
--   Home Assistant dashboard and notification integration.
-
-## Project Rule
-
-The architecture defined in the project specification is binding.
-
-Any fundamental architectural change requires explicit approval before implementation.
-
-A proposed change must explain:
+A proposed architectural change should document:
 
 1.  What is changing
-2.  Why it is better
+2.  Why the change is necessary
 3.  Advantages
 4.  Disadvantages
 5.  Additional costs
 6.  Migration impact
+
+The goal is to keep FoodStock maintainable and predictable over the long term.

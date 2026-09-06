@@ -1,647 +1,459 @@
-# FoodStock Database Design
+# Database
 
--   #### ChatGPT:
-    
-    Sure — here is the **English preview for `04-database.md`**, keeping the same review format as before.
-    
-    # `docs/04-database.md`
-    
-    This file is currently one of the more outdated documents. It describes a considerably larger and more complex database model than what is actually implemented in `foodstock/app/models.py`.
-    
-    The main issue is that the documentation mixes the **planned database architecture** with the **current SQLAlchemy implementation**.
-    
-    ## 1\. Current Tables
-    
-    The documentation currently describes tables such as:
-    
-    ```text
-    users
-    roles
-    products
-    storage_locations
-    inventory_units
-    shopping_list_items
-    inventory_transactions
-    audit_events
-    file_objects
-    ```
-    
-    The current implementation instead contains these core models:
-    
-    ```text
-    User
-    StorageLocation
-    Product
-    Inventory
-    ShoppingList
-    Transaction
-    ```
-    
-    Therefore, the current database overview should be:
-    
-    ```text
-    users
-    storage_locations
-    products
-    inventory
-    shopping_list
-    transactions
-    ```
-    
-    The database schema is currently derived from the SQLAlchemy models. (github.com)
-    
-    * * *
-    
-    ## 2\. `roles` Table
-    
-    The documentation currently describes a separate `roles` table.
-    
-    That table does **not** exist in the current implementation.
-    
-    The user's role is stored directly on the `users` table:
-    
-    ```text
-    users
-    └── role
-    ```
-    
-    The currently supported roles are:
-    
-    ```text
-    user
-    admin
-    ```
-    
-    There is no separate role entity or role relationship.
-    
-    ### Required change
-    
-    Replace the documented role table with:
-    
-    ```text
-    users.role
-    ```
-    
-    and explain that authorization is based on this field.
-    
-    * * *
-    
-    ## 3\. `inventory_units` Is Outdated
-    
-    The documentation currently refers to individual inventory units.
-    
-    The actual table is:
-    
-    ```text
-    inventory
-    ```
-    
-    and the corresponding SQLAlchemy model is:
-    
-    ```text
-    Inventory
-    ```
-    
-    The current implementation does **not** create one database row for every physical item.
-    
-    Instead, an inventory record contains a quantity:
-    
-    ```text
-    product_id
-    quantity
-    expiration_date
-    storage_location_id
-    status
-    ```
-    
-    For example:
-    
-    ```text
-    Product: Milk
-    Quantity: 5
-    Expiration: 2026-09-20
-    Location: Refrigerator
-    ```
-    
-    represents five units through a single inventory record.
-    
-    This distinction should be reflected throughout the database documentation.
-    
-    * * *
-    
-    ## 4\. Current `Inventory` Model
-    
-    The database documentation should describe the actual fields of the `Inventory` model.
-    
-    The current model includes fields such as:
-    
-    ```text
-    id
-    product_id
-    quantity
-    expiration_date
-    storage_location_id
-    status
-    image_path
-    added_by
-    added_at
-    consumed_at
-    ```
-    
-    with relationships to:
-    
-    ```text
-    products
-    storage_locations
-    users
-    ```
-    
-    The exact field names should be taken directly from `models.py` when the final document is written. (github.com)
-    
-    * * *
-    
-    ## 5\. Inventory Status
-    
-    The current implementation uses the following inventory statuses:
-    
-    ```text
-    active
-    missing
-    consumed
-    deleted
-    ```
-    
-    These values should be documented exactly as implemented.
-    
-    The `missing` status is particularly important because it is used to represent stock that was requested for consumption but was not physically available.
-    
-    For example:
-    
-    ```text
-    Active inventory:
-    quantity = 5
-    
-    Missing inventory:
-    quantity = 2
-    ```
-    
-    The calculated stock becomes:
-    
-    ```text
-    5 - 2 = 3
-    ```
-    
-    The application does not represent this by storing:
-    
-    ```text
-    quantity = -3
-    ```
-    
-    * * *
-    
-    ## 6\. `transactions`
-    
-    The current table is:
-    
-    ```text
-    transactions
-    ```
-    
-    with the SQLAlchemy model:
-    
-    ```text
-    Transaction
-    ```
-    
-    The documentation should not refer to this as `inventory_transactions`.
-    
-    The current transaction model contains fields such as:
-    
-    ```text
-    id
-    product_id
-    inventory_id
-    user_id
-    event
-    quantity_delta
-    reason
-    client_operation_id
-    created_at
-    ```
-    
-    These transactions represent inventory-related operations and provide the history of those operations. (github.com)
-    
-    * * *
-    
-    ## 7\. Transactions Are Not Generic Audit Events
-    
-    The current documentation describes a separate:
-    
-    ```text
-    audit_events
-    ```
-    
-    table.
-    
-    This does not currently exist.
-    
-    `transactions` should be described as an **inventory transaction history**, not as a generic audit framework.
-    
-    It records operations such as:
-    
-    ```text
-    add
-    consume
-    correct
-    ```
-    
-    together with the relevant product, inventory record, user and quantity change.
-    
-    A full generic audit system can remain a future enhancement.
-    
-    * * *
-    
-    ## 8\. `file_objects` Does Not Exist
-    
-    The documentation currently describes a dedicated `file_objects` table.
-    
-    There is no such model in the current implementation.
-    
-    Images are currently represented by paths stored directly on the relevant models, for example:
-    
-    ```text
-    Product.image_path
-    Inventory.image_path
-    ```
-    
-    The actual files are stored in application storage.
-    
-    Therefore, the database documentation should not describe a database-backed file-object abstraction as an existing feature.
-    
-    * * *
-    
-    ## 9\. `Product` Model
-    
-    The current `Product` model contains fields including:
-    
-    ```text
-    id
-    name
-    barcode
-    manufacturer
-    unit
-    default_storage_location_id
-    minimum_stock
-    ideal_stock
-    image_path
-    active
-    created_at
-    updated_at
-    ```
-    
-    The exact field list should be verified directly against `models.py` when the final documentation is produced. (github.com)
-    
-    An important relationship is:
-    
-    ```text
-    Product
-    ├── default storage location
-    ├── inventory records
-    ├── shopping list
-    └── transactions
-    ```
-    
-    * * *
-    
-    ## 10\. Storage Locations
-    
-    `storage_locations` is a real current table and should remain part of the documented schema.
-    
-    There are two distinct concepts that need to be documented:
-    
-    ### Product default location
-    
-    ```text
-    Product.default_storage_location_id
-    ```
-    
-    This provides a default location when creating inventory.
-    
-    ### Actual inventory location
-    
-    ```text
-    Inventory.storage_location_id
-    ```
-    
-    An inventory record can use a different location from the product's default location.
-    
-    For example:
-    
-    ```text
-    Product default:
-    Pantry
-    
-    Actual inventory:
-    Kitchen cabinet
-    ```
-    
-    This distinction is supported by the current data model. (github.com)
-    
-    * * *
-    
-    ## 11\. Shopping List
-    
-    The current table is:
-    
-    ```text
-    shopping_list
-    ```
-    
-    rather than:
-    
-    ```text
-    shopping_list_items
-    ```
-    
-    The shopping list is associated with products.
-    
-    The current implementation uses these states:
-    
-    ```text
-    needed
-    on_list
-    purchased
-    stocked
-    ```
-    
-    The database documentation should use these exact values.
-    
-    The shopping list is therefore not simply a Boolean `is_on_list` flag.
-    
-    * * *
-    
-    ## 12\. User Relationships
-    
-    Inventory records contain information about the user who added them.
-    
-    Conceptually:
-    
-    ```text
-    users
+## Overview
+
+FoodStock uses PostgreSQL as its central relational database.
+
+The database is accessed exclusively by FoodStock-Home.
+
+FoodStock-Mobile never connects directly to PostgreSQL.
+
+The current schema is defined by the SQLAlchemy ORM models in the backend.
+
+## Current Schema
+
+The current application schema contains these tables:
+
+```text
+users
+storage_locations
+products
+inventory
+shopping_list
+transactions
+```
+
+The current implementation does **not** contain separate tables named:
+
+```text
+roles
+audit_events
+file_objects
+inventory_units
+inventory_transactions
+```
+
+Those concepts are either represented by existing columns/tables or remain future architectural options.
+
+## Entity Relationships
+
+The main relationships are:
+
+```text
+users
+  │
+  ├──────────────┐
+  │              │
+  ▼              ▼
+inventory     transactions
+  │              │
+  ▼              │
+products ◄───────┘
+  │
+  ├── default_storage_location
+  │
+  └── shopping_list
+
+storage_locations
+  │
+  └── parent_id → storage_locations
+```
+
+Inventory records represent individual stock entries for a product.
+
+Transactions record inventory-changing operations.
+
+## `users`
+
+The `users` table stores application users.
+
+Current fields:
+
+```text
+id
+username
+password_hash
+role
+active
+created_at
+```
+
+### Constraints
+
+`username` is unique.
+
+`role` uses the application's `UserRole` enum.
+
+### Active state
+
+Users can be deactivated without being physically removed.
+
+Inactive users cannot authenticate successfully.
+
+## `storage_locations`
+
+The `storage_locations` table represents physical storage locations.
+
+Current fields:
+
+```text
+id
+name
+parent_id
+active
+created_at
+```
+
+### Hierarchical locations
+
+`parent_id` allows storage locations to form a hierarchy.
+
+Example:
+
+```text
+Basement
+└── Shelf 2
+```
+
+A storage location can therefore represent either a top-level area or a child location.
+
+Location names are unique.
+
+## `products`
+
+The `products` table stores the product master data.
+
+Current fields:
+
+```text
+id
+barcode
+name
+manufacturer
+category
+unit
+image_path
+default_storage_location_id
+minimum_stock
+ideal_stock
+active
+created_at
+updated_at
+```
+
+### Barcode
+
+The barcode is unique when present.
+
+Products without a barcode are supported.
+
+### Active state
+
+Products support soft deactivation through the `active` field.
+
+The API's `DELETE /products/{product_id}` operation currently deactivates the product rather than physically deleting the database record.
+
+This protects existing inventory and transaction references.
+
+### Stock targets
+
+`minimum_stock` defines the threshold below which replenishment may be required.
+
+`ideal_stock` defines the desired target level when configured.
+
+These values are used by the shopping-list logic.
+
+## `inventory`
+
+The `inventory` table represents individual stock entries.
+
+Current fields:
+
+```text
+id
+product_id
+quantity
+expiration_date
+storage_location_id
+status
+image_path
+added_by
+added_at
+consumed_at
+```
+
+### Inventory status
+
+The current status values are:
+
+```text
+active
+consumed
+missing
+deleted
+```
+
+### Active inventory
+
+`active` inventory represents currently available physical stock.
+
+Only active inventory participates in normal FEFO consumption.
+
+### Consumed inventory
+
+When an inventory entry is completely consumed, its status changes to:
+
+```text
+consumed
+```
+
+and `consumed_at` is populated.
+
+### Missing inventory
+
+`missing` represents stock that is known to be absent.
+
+It is used to preserve negative-stock situations instead of silently discarding the difference between requested and available quantities.
+
+### Deleted inventory
+
+The model supports a deleted status for inventory lifecycle handling.
+
+The application should prefer state changes over physical database deletion where historical traceability matters.
+
+## FEFO
+
+FoodStock uses:
+
+**FEFO — First Expire, First Out**
+
+When inventory is consumed, active entries are ordered by:
+
+1.  Known expiration date
+2.  `added_at`
+
+The backend performs the selection and update inside the database transaction.
+
+The client does not choose individual inventory records.
+
+This keeps the inventory-consumption rule centralized.
+
+## `shopping_list`
+
+The `shopping_list` table stores the current shopping-list state per product.
+
+The ORM model is:
+
+```text
+ShoppingListItem
+```
+
+Current fields:
+
+```text
+product_id
+quantity
+status
+updated_by
+updated_at
+```
+
+`product_id` is the primary key.
+
+Therefore, the current implementation allows at most one shopping-list entry per product.
+
+### Status
+
+Shopping-list status uses the application's `ShoppingStatus` enum.
+
+The current API updates the status through:
+
+```text
+PATCH /shopping-list/{product_id}
+```
+
+## `transactions`
+
+The `transactions` table records inventory-changing operations.
+
+Current fields:
+
+```text
+id
+product_id
+inventory_id
+user_id
+event
+quantity_delta
+reason
+client_operation_id
+created_at
+```
+
+### Purpose
+
+The transaction table currently serves both as:
+
+-   inventory operation history
+-   audit/history information
+
+A separate `audit_events` table does not currently exist.
+
+### Quantity delta
+
+Inventory changes are represented through `quantity_delta`.
+
+Examples:
+
+```text
++5  added
+-2  consumed
++3  corrected
+-1  corrected
+```
+
+### Client operation ID
+
+`client_operation_id` is used for idempotency.
+
+It has a unique database constraint:
+
+```text
+uq_transaction_operation
+```
+
+This allows the backend to recognize a previously processed client operation and avoid applying the same inventory mutation twice.
+
+This mechanism is important for offline-capable clients and request retries.
+
+## Referential Relationships
+
+The current schema uses foreign keys to maintain relationships between the main entities.
+
+Important relationships include:
+
+```text
+products.default_storage_location_id
+    → storage_locations.id
+
+inventory.product_id
+    → products.id
+
+inventory.storage_location_id
+    → storage_locations.id
+
+inventory.added_by
+    → users.id
+
+transactions.product_id
+    → products.id
+
+transactions.inventory_id
+    → inventory.id
+
+transactions.user_id
+    → users.id
+
+shopping_list.product_id
+    → products.id
+
+shopping_list.updated_by
+    → users.id
+```
+
+The exact SQLAlchemy relationship configuration remains defined by the ORM models and should be treated as the implementation source of truth.
+
+## Images and Files
+
+Product and inventory images are stored on the persistent FoodStock filesystem.
+
+PostgreSQL stores image paths rather than binary image data.
+
+The current implementation does not have a generalized `file_objects` table.
+
+The current storage model is intentionally simple:
+
+```text
+/data/foodstock/
+└── products/
+    └── <product-id>.<extension>
+```
+
+The filesystem is therefore part of the application's persistent data and must be included in backups.
+
+## Database Initialization
+
+The current application does not use Alembic migrations.
+
+The SQLAlchemy metadata is used to initialize the schema.
+
+This is acceptable for the current development stage but does not provide a complete versioned schema-migration strategy.
+
+## Migration Strategy
+
+Before the application requires regular schema-changing releases, a migration system should be introduced.
+
+The preferred future approach is:
+
+```text
+SQLAlchemy models
        │
-       └── inventory
-    ```
-    
-    Transactions also reference the user responsible for the operation:
-    
-    ```text
-    users
+       ▼
+Alembic migration
        │
-       └── transactions
-    ```
-    
-    This allows inventory changes and their corresponding operations to be associated with a user.
-    
-    * * *
-    
-    ## 13\. `client_operation_id`
-    
-    This field should be explicitly documented.
-    
-    The transaction model contains:
-    
-    ```text
-    client_operation_id
-    ```
-    
-    It is used to support idempotent inventory operations.
-    
-    The basic flow is:
-    
-    ```text
-    Mobile Client
-         |
-         | client_operation_id
-         v
-    FoodStock API
-         |
-         v
-    Transaction
-    ```
-    
-    If the client retries the same operation using the same operation ID, the backend can recognize that the operation has already been processed.
-    
-    This is particularly important for reliable mobile retries.
-    
-    * * *
-    
-    ## 14\. Inventory and Transaction Relationships
-    
-    The database relationships should be represented approximately as:
-    
-    ```text
-    Product
-       │
-       ├── Inventory
-       │      │
-       │      └── Transaction
-       │
-       ├── ShoppingList
-       │
-       └── Transaction
-    ```
-    
-    Inventory also references:
-    
-    ```text
-    StorageLocation
-    User
-    ```
-    
-    Transactions reference:
-    
-    ```text
-    Product
-    Inventory
-    User
-    ```
-    
-    This reflects the current SQLAlchemy relationships more accurately than the older database diagram. (github.com)
-    
-    * * *
-    
-    ## 15\. Current Stock Is Not Stored on `products`
-    
-    The current product model does not contain a simple:
-    
-    ```text
-    products.stock
-    ```
-    
-    field.
-    
-    Current stock is derived from inventory records.
-    
-    Conceptually:
-    
-    ```text
-    stock =
-        SUM(active inventory quantity)
-        -
-        SUM(missing inventory quantity)
-    ```
-    
-    `consumed` and `deleted` inventory records do not contribute to the current stock.
-    
-    Transactions provide historical information but are not themselves the source of the current stock calculation.
-    
-    * * *
-    
-    ## 16\. Negative Stock
-    
-    Negative stock is not represented by negative inventory quantities.
-    
-    For example, if:
-    
-    ```text
-    Available:
-    2
-    
-    Requested consumption:
-    5
-    ```
-    
-    the backend can represent the result through:
-    
-    ```text
-    2 units consumed
-    3 units missing
-    ```
-    
-    The database therefore retains non-negative quantity values while the calculated product stock can become negative.
-    
-    Conceptually:
-    
-    ```text
-    Active:
-    2
-    
-    Missing:
-    3
-    
-    Calculated stock:
-    -1
-    ```
-    
-    This behavior should be explicitly documented because it is an important part of the current inventory model.
-    
-    * * *
-    
-    ## 17\. Timestamps
-    
-    The final documentation should only describe timestamp fields that actually exist in the current models.
-    
-    Relevant fields include:
-    
-    ```text
-    created_at
-    updated_at
-    added_at
-    consumed_at
-    ```
-    
-    The exact timestamp behavior and nullability should be taken from `models.py` rather than copied from the older documentation. (github.com)
-    
-    * * *
-    
-    ## 18\. Database Initialization
-    
-    The current backend does **not** use Alembic migrations.
-    
-    At application startup, SQLAlchemy currently initializes the schema using:
-    
-    ```python
-    Base.metadata.create_all(engine)
-    ```
-    
-    This means:
-    
-    -   SQLAlchemy models define the current schema
-    -   Missing tables are created during startup
-    -   The current implementation does not maintain versioned Alembic migrations
-    -   Schema evolution is therefore not currently handled through migration files
-    
-    This should be documented accurately rather than describing an Alembic-based migration workflow.
-    
-    * * *
-    
-    ## 19\. Current Database Overview
-    
-    The final documentation should contain a concise overview similar to:
-    
-    ```text
-    ┌─────────────────────┐
-    │       users         │
-    └─────────┬───────────┘
-              │
-              ├───────────────┐
-              │               │
-              ▼               ▼
-        ┌───────────┐   ┌──────────────┐
-        │ inventory │   │ transactions │
-        └─────┬─────┘   └──────┬───────┘
-              │                │
-              └───────┬────────┘
-                      ▼
-                ┌──────────┐
-                │ products │
-                └────┬─────┘
-                     │
-            ┌────────┴─────────┐
-            ▼                  ▼
-    ┌──────────────────┐ ┌───────────────┐
-    │ storage_locations│ │ shopping_list │
-    └──────────────────┘ └───────────────┘
-    ```
-    
-    The exact relationship cardinalities should be verified against the SQLAlchemy definitions before finalizing the document.
-    
-    * * *
-    
-    # Required Changes
-    
-    ### 🔴 Must be corrected
-    
-    -   Remove `roles` as a database table
-    -   Rename `inventory_units` → `inventory`
-    -   Rename `inventory_transactions` → `transactions`
-    -   Remove `audit_events`
-    -   Remove `file_objects`
-    -   Remove the assumption that every physical item has its own database row
-    -   Document `quantity`\-based inventory
-    -   Document the actual inventory statuses
-    -   Document `missing` inventory
-    -   Remove negative `quantity` as the representation of negative stock
-    -   Remove Alembic as a current implementation
-    -   Document `client_operation_id`
-    
-    ### 🟠 Should be clarified
-    
-    -   Product default storage location vs. actual inventory storage location
-    -   Transaction vs. audit event
-    -   Stock calculation
-    -   User relationships
-    -   Timestamp fields
-    -   Database initialization
-    -   Actual SQLAlchemy relationships
-    
-    ### 🟢 Can remain
-    
-    -   PostgreSQL
-    -   SQLAlchemy
-    -   Product model
-    -   Storage locations
-    -   Inventory history
-    -   Shopping list
-    -   User references
-    -   Foreign-key relationships
+       ▼
+PostgreSQL schema
+```
+
+Each schema change should then have an explicit migration.
+
+Until this is implemented, documentation must not imply that Alembic migrations are already available.
+
+## Backup Requirements
+
+A complete FoodStock backup must include both:
+
+-   PostgreSQL data
+-   `/data/foodstock` persistent files
+
+Backing up only PostgreSQL is insufficient because product/image files are stored outside the database.
+
+A backup should be considered operationally valid only after restoration has been tested.
+
+## Future: Product Groups
+
+The current schema does not contain product groups.
+
+A future implementation may introduce a product-group abstraction:
+
+Product
+    │
+    └── ProductGroup
+
+Example:
+
+ALDI Milk 1.5% ──┐
+REWE Milk 1.5% ──┼── Milk 1.5%
+LIDL Milk 1.5% ──┘
+
+Product identity remains barcode/product based.
+
+Product groups are intended for higher-level functions such as:
+
+- aggregated stock information
+- shopping-list recommendations
+- substitutions
+- product similarity
+- future intelligent matching
+
+Automatic grouping must not silently merge distinct products.
+
+## Source of Truth
+
+For the current database schema, the following are authoritative:
+
+1.  SQLAlchemy models
+2.  Actual PostgreSQL schema
+3.  Database migration files once a migration system is introduced
+
+This document describes the current logical schema and must be updated whenever the persistent data model changes.
