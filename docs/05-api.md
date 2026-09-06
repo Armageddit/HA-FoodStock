@@ -1,20 +1,38 @@
 # API
 
+## Overview
+
+The FoodStock API is the communication layer between FoodStock-Mobile and FoodStock-Home.
+
+The backend is authoritative for all persistent application state and business-critical operations.
+
+The current API is an internal household API.
+
 ## Base URL
 
-The API is currently served by the FoodStock backend.
+The current implementation does **not** use an `/api/v1` prefix.
 
-The current implementation does not use an `/api/v1` prefix.
+Endpoints are therefore exposed directly from the backend root.
 
-Interactive API documentation is available through FastAPI at:
+Example:
 
 ```text
-/docs
+http://<foodstock-host>:8000
 ```
+
+FastAPI's interactive API documentation is available at:
+
+```text
+http://<foodstock-host>:8000/docs
+```
+
+The generated OpenAPI specification is available through the FastAPI application.
 
 ## Authentication
 
-### Obtain access token
+Authenticated endpoints require a bearer access token.
+
+### Obtain token
 
 ```http
 POST /auth/token
@@ -28,7 +46,7 @@ username
 password
 ```
 
-Response:
+Example response:
 
 ```json
 {
@@ -37,14 +55,24 @@ Response:
 }
 ```
 
-### Current user
+The client should send the token with subsequent authenticated requests:
+
+```http
+Authorization: Bearer <jwt>
+```
+
+The current implementation does not provide refresh tokens, logout, or server-side token revocation.
+
+## Current User
 
 ```http
 GET /auth/me
 Authorization: Bearer <token>
 ```
 
-## System
+Returns information about the authenticated user.
+
+## System Endpoints
 
 ### Root
 
@@ -52,7 +80,7 @@ Authorization: Bearer <token>
 GET /
 ```
 
-Returns application status and version.
+Returns application status and version information.
 
 ### Health
 
@@ -60,7 +88,7 @@ Returns application status and version.
 GET /health
 ```
 
-Checks application and database availability.
+Checks application/database availability.
 
 ### Database configuration
 
@@ -68,18 +96,33 @@ Checks application and database availability.
 GET /database-configured
 ```
 
-Returns non-secret database connection metadata.
+Returns non-secret database connection metadata used for diagnostics/setup.
 
-Passwords and secrets must never be returned.
+Passwords, secrets, and credentials must never be returned.
 
 ## Users
 
-Administrator only:
+User administration is restricted to administrators.
+
+### List users
 
 ```http
-GET   /users
-POST  /users
+GET /users
+Authorization: Bearer <admin-token>
+```
+
+### Create user
+
+```http
+POST /users
+Authorization: Bearer <admin-token>
+```
+
+### Update user
+
+```http
 PATCH /users/{user_id}
+Authorization: Bearer <admin-token>
 ```
 
 Users can be activated/deactivated and their roles can be changed.
@@ -88,59 +131,158 @@ An administrator cannot deactivate their own account.
 
 ## Storage Locations
 
+### List locations
+
 ```http
-GET   /storage-locations
-POST  /storage-locations
-PATCH /storage-locations/{location_id}
+GET /storage-locations
+Authorization: Bearer <token>
 ```
 
-Reading requires authentication.
+Returns active storage locations.
 
-Creating and modifying locations requires administrator privileges.
+### Create location
+
+```http
+POST /storage-locations
+Authorization: Bearer <admin-token>
+```
+
+### Update location
+
+```http
+PATCH /storage-locations/{location_id}
+Authorization: Bearer <admin-token>
+```
+
+Storage locations support hierarchical relationships through `parent_id`.
 
 ## Products
 
+### List products
+
 ```http
-GET    /products
-GET    /products/{product_id}
-POST   /products
-PATCH  /products/{product_id}
-DELETE /products/{product_id}
-POST   /products/{product_id}/image
+GET /products
+Authorization: Bearer <token>
 ```
 
-`DELETE` currently deactivates the product. It does not physically delete it.
+By default, only active products are returned.
 
-`GET /products` supports:
+To include inactive products:
 
-```text
-include_inactive=true
+```http
+GET /products?include_inactive=true
 ```
 
-to include inactive products.
+### Get product
+
+```http
+GET /products/{product_id}
+Authorization: Bearer <token>
+```
+
+### Create product
+
+```http
+POST /products
+Authorization: Bearer <token>
+```
 
 Product creation is available to authenticated users.
 
-Product modification, deactivation, and image upload require administrator privileges.
+A barcode must be unique when provided.
+
+### Update product
+
+```http
+PATCH /products/{product_id}
+Authorization: Bearer <admin-token>
+```
+
+Product modification requires administrator privileges.
+
+### Deactivate product
+
+```http
+DELETE /products/{product_id}
+Authorization: Bearer <admin-token>
+```
+
+The current implementation does not physically delete the product.
+
+It sets:
+
+```text
+active = false
+```
+
+and returns a deactivation result.
+
+### Upload product image
+
+```http
+POST /products/{product_id}/image
+Authorization: Bearer <admin-token>
+Content-Type: multipart/form-data
+```
+
+Supported image types:
+
+```text
+image/jpeg
+image/png
+image/webp
+```
+
+Maximum upload size:
+
+```text
+10 MB
+```
+
+The image is stored in the persistent FoodStock filesystem.
 
 ## Barcode Lookup
 
 ```http
 GET /scan/{barcode}
+Authorization: Bearer <token>
 ```
 
-Behavior:
+The backend first checks the local product database.
+
+If no local product exists, it queries Open Food Facts.
+
+Possible result flow:
 
 ```text
-local product found
-    -> return local product
+Local product found
+    ↓
+return local product
 
-local product not found
-    -> query Open Food Facts
-    -> return optional suggestion
+Local product not found
+    ↓
+Open Food Facts lookup
+    ↓
+return optional suggestion
 ```
 
-No product is automatically created from Open Food Facts data.
+Open Food Facts data is not automatically inserted into the FoodStock database.
+
+The response may contain:
+
+```json
+{
+  "found": false,
+  "source": "openfoodfacts",
+  "suggestion": {
+    "barcode": "...",
+    "name": "...",
+    "manufacturer": "...",
+    "category": "...",
+    "remote_image_url": "..."
+  }
+}
+```
 
 ## Inventory
 
@@ -148,31 +290,73 @@ No product is automatically created from Open Food Facts data.
 
 ```http
 POST /inventory
+Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
-The request contains the product, quantity, optional expiration date, optional storage location, and optional client operation ID.
+The request can contain:
 
-The server creates an inventory entry.
+-   Product ID
+-   Quantity
+-   Optional expiration date
+-   Optional storage location
+-   Optional `client_operation_id`
+
+The backend creates an inventory entry.
+
+If no storage location is supplied, the product's default storage location is used when available.
+
+A successful response contains the created inventory ID and current product stock.
 
 ### Consume inventory
 
 ```http
 POST /products/{product_id}/consume
+Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
-The request specifies the quantity to consume.
+The request specifies:
+
+-   Quantity
+-   Optional reason
+-   Optional `client_operation_id`
+
+The client does not select individual inventory entries.
 
 The backend performs FEFO consumption.
 
-The client does not specify which inventory entries are consumed.
+### FEFO
+
+Consumption uses:
+
+**FEFO — First Expire, First Out**
+
+The backend consumes active inventory with the earliest known expiration date first.
+
+If the available stock is insufficient, the remaining quantity is represented as missing stock.
 
 ### Correct inventory
 
 ```http
 POST /products/{product_id}/correct
+Authorization: Bearer <admin-token>
+Content-Type: application/json
 ```
 
-Administrator operation.
+Inventory correction is an administrator operation.
+
+The request specifies:
+
+-   Quantity delta
+-   Reason
+-   Optional `client_operation_id`
+
+A zero quantity delta is rejected.
+
+Positive corrections create active stock.
+
+Negative corrections create missing stock.
 
 The correction is recorded as a transaction.
 
@@ -180,62 +364,217 @@ The correction is recorded as a transaction.
 
 ```http
 GET /inventory
+Authorization: Bearer <token>
 ```
 
-Optional status filtering is supported.
+The current implementation supports status filtering.
+
+The default status filter is active inventory.
 
 ### Expiring inventory
 
 ```http
 GET /expiring?days=14
+Authorization: Bearer <token>
 ```
 
-Returns active inventory entries with an expiration date within the requested horizon.
+Returns active inventory entries with an expiration date within the requested number of days.
+
+The accepted range is currently:
+
+```text
+0–365 days
+```
+
+## Idempotent Inventory Operations
+
+Inventory-changing operations support:
+
+```text
+client_operation_id
+```
+
+The identifier should be generated by the client for each logical operation.
+
+Example:
+
+```json
+{
+  "product_id": 42,
+  "quantity": 2,
+  "client_operation_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+If the same operation is submitted again with the same identifier, the backend detects the existing transaction and does not execute the operation twice.
+
+Typical response:
+
+```json
+{
+  "status": "already_applied"
+}
+```
+
+For consumption and correction, the response also includes the current stock.
+
+This mechanism is intended to support safe retries and the planned offline-first mobile application.
 
 ## Shopping List
 
-### List
+### List shopping list
 
 ```http
 GET /shopping-list
+Authorization: Bearer <token>
 ```
 
-### Update status
+Returns the current shopping-list entries.
+
+The response includes product information such as:
+
+-   Product ID
+-   Product name
+-   Unit
+-   Required quantity
+-   Status
+
+### Update shopping-list status
 
 ```http
 PATCH /shopping-list/{product_id}
+Authorization: Bearer <token>
+Content-Type: application/json
 ```
 
 The current implementation identifies a shopping-list entry by product ID.
 
+The status update is associated with the authenticated user.
+
 ## Transactions
 
-Administrator only:
+Transaction history is restricted to administrators.
+
+### List transactions
 
 ```http
-GET /transactions
+GET /transactions?limit=100
+Authorization: Bearer <admin-token>
 ```
 
-The endpoint supports a configurable result limit.
+The current result limit range is:
 
-The transaction history includes the associated product and user information.
+```text
+1–500
+```
+
+The transaction response contains the transaction data together with associated product and user information.
+
+The transaction table is currently the authoritative history of inventory mutations.
 
 ## Recipe Prompt
 
 ```http
 GET /ai/prompt
+Authorization: Bearer <token>
 ```
 
-Returns a generated recipe prompt based on current inventory.
+Returns generated recipe-prompt text based on the current inventory.
 
-This endpoint does not call an AI provider.
+The endpoint does **not** call an AI provider.
 
 It only generates structured prompt text.
 
+An AI provider can be integrated separately in the future.
+
+## HTTP Status Codes
+
+The API uses standard HTTP status codes.
+
+Common examples include:
+
+```text
+200 OK
+201 Created
+400 Bad Request
+401 Unauthorized
+403 Forbidden
+404 Not Found
+409 Conflict
+413 Payload Too Large
+415 Unsupported Media Type
+422 Validation Error
+```
+
+The exact response body depends on the endpoint and FastAPI validation behavior.
+
+## Error Format
+
+The current application uses FastAPI's standard error format:
+
+```json
+{
+  "detail": "..."
+}
+```
+
+Clients should not use localized error messages as stable machine-readable identifiers.
+
+A future API version may introduce structured application-specific error codes.
+
+## API and Offline Synchronization
+
+The backend is authoritative.
+
+The planned mobile application may maintain a local representation of application data for offline use, but synchronization must ultimately use the FoodStock API.
+
+For state-changing operations:
+
+```text
+Mobile
+   │
+   │ operation + client_operation_id
+   ▼
+FoodStock API
+   │
+   ├── validate
+   ├── execute
+   ├── record transaction
+   └── return authoritative state
+```
+
+The mobile client should not assume that an operation succeeded solely because it was stored locally.
+
+The backend response determines the authoritative server state.
+
 ## API Stability
 
-The API is currently an internal household API.
+The current API is an internal household API and does not currently use URL-based API versioning.
 
-Before the Android application becomes dependent on the API, request and response models should be treated as a formal client contract.
+Before FoodStock-Mobile becomes dependent on the API, request and response models should be treated as a formal client contract.
 
-Breaking API changes should then require an explicit versioning or migration strategy.
+Breaking changes should be handled deliberately.
+
+Possible future strategies include:
+
+-   Backward-compatible changes
+-   Explicit API versioning
+-   Migration periods
+-   Versioned OpenAPI contracts
+
+The current implementation should not be described as `/api/v1` until such a prefix actually exists in the backend.
+
+## OpenAPI
+
+FastAPI automatically exposes the implemented API through OpenAPI.
+
+The interactive documentation is available at:
+
+```text
+/docs
+```
+
+This generated specification should be treated as the most direct representation of the currently implemented endpoint surface.
+
+When the mobile application is developed, the API documentation and generated OpenAPI schema should be kept synchronized with the backend implementation.  
+:::{"fallbackMarkdown":"","reference":{"matched\_text":" ","prefix":null,"start\_idx":30033,"end\_idx":30033,"safe\_urls":\[\],"refs":\[\],"alt":"","prompt\_text":null,"type":"sources\_footnote","sources":\[{"title":"HA-FoodStock/docs/03-backend.md at docs · Armageddit/HA-FoodStock · GitHub","url":"https://github.com/Armageddit/HA-FoodStock/blob/docs/docs/03-backend.md","attribution":"GitHub"}\],"has\_images":false},"showLoginRequiredCard":false}
