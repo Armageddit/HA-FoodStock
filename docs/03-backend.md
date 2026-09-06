@@ -1,293 +1,596 @@
 # FoodStock Backend Specification
 
-## 1\. Backend Role
+## 1\. Backend Stack
 
-The FoodStock Backend is the central authority for all application data and business rules.
+### Aktuelle Doku
 
-The backend must remain independent of the FlutterFlow UI.
+Die Doku nennt unter anderem:
 
-## 2\. Framework
+```text
+FastAPI
+SQLAlchemy
+asyncpg
+Alembic
+Pydantic
+PostgreSQL
+```
 
-The backend uses FastAPI.
+### Tatsächlicher Stand
 
-FastAPI provides:
+Der aktuelle Dependency-Stand verwendet:
 
--   REST API
--   Request validation
--   Response validation
--   OpenAPI documentation
--   Dependency injection
--   Authentication integration
--   Async request handling
+```text
+FastAPI
+SQLAlchemy
+psycopg[binary]
+Pydantic
+PostgreSQL
+```
 
-## 3\. Data Validation
+`asyncpg` ist aktuell nicht der verwendete PostgreSQL-Treiber. Die Datenbank-URL verwendet:
 
-Pydantic models are used for API input and output validation.
+```text
+postgresql+psycopg://
+```
 
-Invalid input must be rejected before business logic is executed.
+Das sollte unbedingt korrigiert werden.
 
-Examples:
+* * *
 
--   Invalid barcode
--   Invalid date
--   Invalid quantity
--   Unknown inventory ID
--   Unauthorized user
--   Invalid storage location
+# 2\. Alembic ist aktuell nicht implementiert
 
-## 4\. Database Access
+Das ist eine der deutlichsten Fehlerstellen.
 
-SQLAlchemy 2 is used as the database abstraction layer.
+Die Doku beschreibt:
 
-`asyncpg` is used as the PostgreSQL driver.
+> Alembic is used for database schema migrations.
 
-Database access must be centralized.
+Das stimmt derzeit nicht.
 
-API route handlers should not contain raw SQL business logic.
+Der aktuelle Backend-Start verwendet:
 
-## 5\. Migrations
+```python
+Base.metadata.create_all(engine)
+```
 
+Damit werden die Tabellen beim Start aus den SQLAlchemy-Modellen erzeugt. (github.com)
+
+Es gibt aktuell kein funktionierendes Alembic-Migrationssystem, das wir als Teil der Backend-Architektur dokumentieren sollten.
+
+### Änderung
+
+Statt:
+
+```text
 Alembic is used for database schema migrations.
+```
 
-Every schema change must be represented by a migration.
+sollte dort stehen:
 
-Production database changes must never depend on manually editing tables.
+> The current implementation initializes the database schema using SQLAlchemy metadata during application startup. A dedicated migration framework such as Alembic is not currently implemented.
 
-Example:
+Falls Alembic später eingeführt wird, kann die Dokumentation dann entsprechend aktualisiert werden.
+
+* * *
+
+# 3\. Projektstruktur stimmt nicht
+
+Die Doku beschreibt eine Struktur in Richtung:
 
 ```text
-Migration 001
-Initial schema
-
-Migration 002
-Add audit events
-
-Migration 003
-Add product image metadata
+app/
+├── api/
+├── core/
+├── models/
+├── schemas/
+├── services/
+└── migrations/
 ```
 
-## 6\. Configuration
-
-Configuration must come from environment variables and/or Home Assistant App configuration.
-
-Secrets must never be hardcoded.
-
-Examples:
+Der tatsächliche aktuelle Code liegt wesentlich flacher:
 
 ```text
-DATABASE_URL
-JWT_SECRET
-STORAGE_ROOT
-LOG_LEVEL
+foodstock/
+└── app/
+    ├── main.py
+    ├── models.py
+    ├── database.py
+    ├── schemas.py
+    └── ...
 ```
 
-The actual variable names will be finalized during implementation.
+Der größte Teil der Endpoints und Business-Logik befindet sich momentan in `main.py`. (github.com)
 
-## 7\. Health Checks
+### Empfehlung
 
-The backend must expose:
+Nicht behaupten, dass die modulare Struktur bereits existiert.
+
+Wenn wir sie weiterhin als Ziel wollen:
 
 ```text
-GET /health
+Current structure
 ```
 
-The health endpoint should verify application availability.
-
-A separate readiness endpoint should eventually verify dependencies:
+und separat:
 
 ```text
-GET /ready
+Target structure
 ```
 
-Readiness should verify that the database is reachable.
+Das hatten wir schon bei `02` — hier sollte die Backend-Doku konsistent sein.
 
-## 8\. Error Handling
+* * *
 
-The API should use consistent error responses.
+# 4\. Application Startup
 
-Example:
+Der Startup-Ablauf in der Doku ist teilweise richtig, aber sollte genauer werden.
 
-```json
-{
-  "error": {
-    "code": "PRODUCT_NOT_FOUND",
-    "message": "The requested product does not exist."
-  }
-}
-```
-
-Error messages must not expose:
-
--   Passwords
--   Database credentials
--   Internal stack traces
--   SQL statements
--   Secrets
-
-## 9\. Logging
-
-Logs should contain:
-
--   Timestamp
--   Log level
--   Request ID
--   User ID where appropriate
--   Operation
--   Error information
-
-Sensitive values must be excluded.
-
-## 10\. Request IDs
-
-Each API request should have a request identifier.
-
-This makes it possible to correlate:
+Aktuell passiert beim Start unter anderem:
 
 ```text
-Mobile App
-   |
-   | request ID
-   v
-API
-   |
-   v
-Database
+Create database engine
+↓
+Create database tables
+↓
+Create storage directories
+↓
+Initialize default storage locations
+↓
+Initialize initial admin
+↓
+Start FastAPI
 ```
 
-with server logs.
+Die Anwendung legt die benötigten Storage-Verzeichnisse an und initialisiert unter anderem Standard-Lagerorte. (github.com)
 
-## 11\. Transactional Inventory Operations
+Außerdem wird ein initialer Admin-Account über die konfigurierten Environment-Variablen vorbereitet.
 
-Inventory changes must be implemented as database transactions.
+Das sollte in `03` explizit dokumentiert werden.
 
-A consume operation should:
+* * *
 
-1.  Authenticate the user.
-2.  Check authorization.
-3.  Select the appropriate active inventory unit.
-4.  Lock the relevant database row.
-5.  Mark the inventory unit consumed.
-6.  Create an audit event.
-7.  Recalculate affected shopping-list state.
-8.  Commit the transaction.
+# 5\. Database Initialization
 
-If any step fails, the transaction must roll back.
+Die Doku spricht aktuell von:
 
-## 12\. FEFO
+> migrations are executed on startup
 
-FoodStock uses:
+Das ist falsch.
+
+Aktuell:
 
 ```text
-First Expire, First Out
+SQLAlchemy Base.metadata.create_all()
 ```
 
-as the default consumption strategy.
+Das bedeutet:
 
-Sorting:
+-   fehlende Tabellen werden erzeugt
+-   bestehende Tabellen werden nicht über Migrationen versioniert
+-   Schemaänderungen werden nicht automatisch als Migration ausgeführt
 
-1.  Active inventory
-2.  Earliest expiration date
-3.  Stable secondary ordering
+Das ist ein wichtiger Unterschied.
 
-The secondary ordering prevents nondeterministic behavior for equal dates.
+* * *
 
-## 13\. Shopping List Calculation
+# 6\. Authentication
 
-Shopping-list calculation must be centralized.
+Die aktuelle Doku beschreibt ein komplexeres Auth-System, als tatsächlich vorhanden ist.
 
-Pseudocode:
+Aktuell existieren:
 
 ```text
-if current_stock < minimum_stock:
-
-    if ideal_stock is defined:
-        quantity = ideal_stock - current_stock
-    else:
-        quantity = minimum_stock - current_stock
-
-    add_or_update_shopping_item()
+POST /auth/token
+GET /auth/me
 ```
 
-## 14\. Product Import
+Der Login verwendet OAuth2 Password Form und gibt einen JWT Access Token zurück. (github.com)
 
-Open Food Facts is an external enrichment source.
-
-Imported data is treated as untrusted external data.
-
-The backend must normalize and validate imported fields before presenting them to the user.
-
-The user's locally stored product data remains authoritative after confirmation.
-
-## 15\. File Storage
-
-The backend stores files outside PostgreSQL.
-
-Database records contain references such as:
+Es gibt aktuell **nicht**:
 
 ```text
-storage_key
-file_name
-mime_type
-size
-checksum
-created_at
+/auth/login
+/auth/refresh
+/auth/logout
 ```
 
-A storage abstraction should be used so that the physical storage implementation can be changed later.
+als separates API-Modell.
 
-## 16\. Image Security
+Insbesondere ein Refresh-Token-System ist derzeit nicht implementiert.
 
-Uploaded files must be validated.
+### Daher
 
-At minimum:
-
--   MIME type validation
--   File size limit
--   Extension normalization
--   Generated storage filenames
--   No executable file types
--   No user-controlled filesystem paths
-
-## 17\. API Versioning
-
-The initial API should use:
+Die Backend-Doku sollte beschreiben:
 
 ```text
-/api/v1/
+User credentials
+      ↓
+POST /auth/token
+      ↓
+JWT access token
+      ↓
+Authorization: Bearer <token>
 ```
 
-Example:
+und nicht ein Login/Refresh/Logout-System dokumentieren, das es aktuell nicht gibt.
+
+* * *
+
+# 7\. Password Storage
+
+Dieser Teil ist grundsätzlich korrekt.
+
+Passwörter werden nicht im Klartext gespeichert.
+
+Die aktuelle Implementierung verwendet einen Password-Hashing-Mechanismus über `pwdlib`/Argon2. (github.com)
+
+Hier würde ich allerdings prüfen, ob die aktuelle Doku noch explizit **bcrypt** nennt.
+
+Falls dort steht:
 
 ```text
-/api/v1/products
-/api/v1/inventory
-/api/v1/shopping-list
+bcrypt
 ```
 
-This allows future breaking API changes without immediately breaking older mobile versions.
+muss das korrigiert werden.
 
-## 18\. API Documentation
+Der aktuelle Code verwendet Argon2-basierte Password-Hashing-Unterstützung.
 
-FastAPI's generated OpenAPI documentation should be used during development.
+Das ist wichtig, weil wir bei Security-Dokumentation exakt sein sollten.
 
-The API specification should additionally be maintained as a project document so that the API does not depend solely on generated documentation.
+* * *
 
-## 19\. Backend Testing
+# 8\. Authorization
 
-Tests should cover:
+Das Prinzip der Doku ist korrekt:
 
--   Authentication
--   Authorization
--   Product creation
--   Product lookup
--   Inventory creation
--   FEFO consumption
--   Negative inventory
--   Shopping-list calculation
--   Expiration categories
--   Concurrent consumption
--   Audit events
--   File metadata
--   API validation
+> Authorization is enforced server-side.
 
-Critical business rules require automated tests.
+Der aktuelle Code verwendet Role Checks für Admin-Funktionen. (github.com)
+
+Die Doku sollte aber die tatsächlich vorhandenen Rollen nennen:
+
+```text
+user
+admin
+```
+
+und keine zusätzliche Permission-/Role-Hierarchie suggerieren.
+
+Es gibt aktuell kein komplexes RBAC-System.
+
+* * *
+
+# 9\. Product API
+
+Der aktuelle Backend-Code unterstützt unter anderem:
+
+```text
+GET    /products
+POST   /products
+PATCH  /products/{product_id}
+DELETE /products/{product_id}
+```
+
+sowie Barcode- und Bildfunktionen. (github.com)
+
+Hier muss die Doku insbesondere prüfen, ob noch alte `/api/v1/...`\-Pfade verwendet werden.
+
+Falls ja:
+
+❌ entfernen.
+
+Die aktuelle API verwendet keine solche `/api/v1`\-Prefix-Struktur.
+
+* * *
+
+# 10\. Inventory API
+
+Die aktuelle Inventory-API ist ebenfalls anders als die alte Doku.
+
+Relevant sind aktuell:
+
+```text
+POST /inventory
+POST /products/{product_id}/consume
+POST /products/{product_id}/correct
+GET  /inventory
+GET  /expiring
+```
+
+(github.com)
+
+Die Backend-Doku sollte hier besonders deutlich machen:
+
+### Add inventory
+
+Erzeugt einen Inventory Record.
+
+### Consume
+
+Führt serverseitig FEFO aus.
+
+### Correct
+
+Korrigiert Bestand serverseitig.
+
+### Inventory
+
+Liefert den aktuell berechneten Bestand.
+
+### Expiring
+
+Liefert Ablauf-/MHD-relevante Bestände.
+
+* * *
+
+# 11\. Inventory Consumption
+
+Dieser Abschnitt ist wichtig und sollte sehr detailliert bleiben.
+
+Der Code macht nicht einfach:
+
+```text
+quantity -= requested_quantity
+```
+
+sondern:
+
+```text
+Find active inventory
+↓
+Sort by expiration date
+↓
+Lock selected rows
+↓
+Consume available quantity
+↓
+Create missing quantity if necessary
+↓
+Record transaction
+↓
+Update shopping list
+↓
+Commit
+```
+
+Das ist die tatsächliche Business-Logik. (github.com)
+
+Das sollte in `03-backend.md` als zentraler Backend-Prozess dokumentiert werden.
+
+* * *
+
+# 12\. Idempotency
+
+Die aktuelle Doku unterschätzt bzw. übersieht hier ein gutes Feature.
+
+Der Code unterstützt:
+
+```text
+client_operation_id
+```
+
+bei Inventory-Mutationen.
+
+Wenn dieselbe Operation erneut mit derselben ID gesendet wird, wird sie nicht noch einmal angewendet. (github.com)
+
+Das sollte unbedingt in die Backend-Dokumentation.
+
+Beispiel:
+
+```text
+Client
+  |
+  | operation_id = ABC
+  v
+Backend
+  |
+  ├── Operation not seen → execute
+  |
+  └── Operation already seen → ignore/reuse result
+```
+
+Das ist insbesondere für Mobile-Retries wichtig.
+
+* * *
+
+# 13\. Shopping List
+
+Der aktuelle Code synchronisiert die Shopping List während relevanter Inventory-Operationen.
+
+Die Doku sollte deshalb nicht behaupten, dass ein separater Scheduler oder Hintergrundjob die gesamte Liste kontinuierlich aktualisiert.
+
+Aktuell ist die Logik eng an Inventory-Änderungen gekoppelt. (github.com)
+
+* * *
+
+# 14\. Barcode Lookup
+
+Der Backend-Ablauf ist:
+
+```text
+GET /scan/{barcode}
+```
+
+Zuerst wird lokal gesucht.
+
+Nur wenn kein lokales Produkt gefunden wird, wird Open Food Facts angefragt.
+
+Das Ergebnis kann eine externe Produktsuggestion enthalten. (github.com)
+
+Wichtig:
+
+**Die Barcode-API legt das externe Produkt nicht automatisch als lokales Produkt an.**
+
+Das sollte in `03` klar stehen.
+
+* * *
+
+# 15\. Product Images
+
+Der aktuelle Upload:
+
+```text
+POST /products/{product_id}/image
+```
+
+ist vorhanden.
+
+Die Implementierung:
+
+-   akzeptiert JPEG
+-   akzeptiert PNG
+-   akzeptiert WebP
+-   begrenzt die Uploadgröße
+-   speichert die Datei im Application Storage
+-   schreibt den Pfad in `image_path`
+
+(github.com)
+
+Die Doku sollte kein separates `file_objects`\-System voraussetzen.
+
+* * *
+
+# 16\. AI Prompt
+
+Der aktuelle Backend-Endpoint:
+
+```text
+GET /ai/prompt
+```
+
+ist tatsächlich implementiert.
+
+Die Funktion erstellt einen Prompt aus dem vorhandenen Inventory.
+
+Der aktuelle Code berücksichtigt insbesondere Lebensmittel mit MHD innerhalb eines definierten Zeitraums und sortiert diese nach Ablaufdatum. (github.com)
+
+Die Doku sollte daher klar zwischen:
+
+```text
+AI prompt generation
+```
+
+und:
+
+```text
+AI provider integration
+```
+
+unterscheiden.
+
+Ersteres existiert.
+
+Zweiteres nicht.
+
+* * *
+
+# 17\. Transactions
+
+Der aktuelle Backend-Code schreibt Transaktionen bei Inventory-Operationen.
+
+Die Doku sollte aber nicht von einem generischen Audit Framework sprechen.
+
+Aktuelles Modell:
+
+```text
+Transaction
+├── product_id
+├── inventory_id
+├── user_id
+├── event
+├── quantity_delta
+├── reason
+├── client_operation_id
+└── created_at
+```
+
+(github.com)
+
+Das ist eine **Inventory Transaction History**, keine universelle Audit Engine.
+
+* * *
+
+# 18\. Error Handling
+
+Hier würde ich die aktuelle API stärker an den tatsächlichen HTTP-Responses ausrichten.
+
+Beispielsweise werden unter anderem verwendet:
+
+```text
+400 Bad Request
+401 Unauthorized
+403 Forbidden
+404 Not Found
+409 Conflict
+413 Request Entity Too Large
+```
+
+je nach Fehlerfall. (github.com)
+
+Falls `03-backend.md` derzeit eigene, nicht implementierte Fehlercodes definiert, sollten wir diese gegen den Code austauschen.
+
+* * *
+
+# 19\. Database Transactions
+
+Dieser Abschnitt sollte unbedingt erhalten bleiben.
+
+Die Inventory-Mutations sind transaktional.
+
+Insbesondere:
+
+```text
+Consume
+↓
+Inventory changes
+↓
+Transaction record
+↓
+Shopping-list update
+↓
+Commit
+```
+
+sollten zusammen erfolgen.
+
+Das verhindert einen Zustand, in dem beispielsweise Inventory verändert wurde, aber die zugehörige Transaction nicht geschrieben wurde.
+
+* * *
+
+# 20\. Was ich in `03` ändern würde
+
+### 🔴 Definitiv korrigieren
+
+-   `asyncpg` → `psycopg`
+-   Alembic als aktuell vorhanden entfernen
+-   aktuelle Projektstruktur dokumentieren
+-   `/api/v1/...` entfernen, falls vorhanden
+-   `/auth/login`, `/auth/refresh`, `/auth/logout` entfernen
+-   JWT Access Token über `/auth/token` dokumentieren
+-   Password hashing auf aktuellen Mechanismus korrigieren
+-   `roles`/RBAC nicht übertreiben
+-   `file_objects` entfernen
+-   generisches Audit-System → Transactions
+-   Inventory-API an aktuellen Code anpassen
+
+### 🟠 Ergänzen
+
+-   `client_operation_id`
+-   Idempotency
+-   `MISSING`\-Inventory
+-   FEFO mit Row Locking
+-   Shopping-List-Update bei Inventory-Operationen
+-   tatsächlichen Startup-Prozess
+-   AI Prompt Endpoint
+-   tatsächliches Image Storage Verhalten
+
+### 🟢 Beibehalten
+
+-   FastAPI
+-   SQLAlchemy
+-   PostgreSQL
+-   Server-side business logic
+-   Transactional inventory mutations
+-   Backend authorization
+-   Mobile → API → database boundary

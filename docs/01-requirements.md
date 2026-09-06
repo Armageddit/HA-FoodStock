@@ -1,324 +1,640 @@
 # FoodStock Requirements
 
-## 1\. Users
+## 1. Users and Roles
 
-FoodStock supports at least two roles.
+FoodStock supports multiple household users.
 
 ### User
 
 A normal user can:
 
--   Sign in
--   Scan barcodes
--   Add products
--   Add inventory units
--   Capture expiration dates
--   Select storage locations
--   View inventory
--   Consume food
--   View the shopping list
--   Edit or complete shopping-list items
--   Generate AI recipe prompts
+- Log in
+- View products
+- Add products
+- Add inventory
+- Consume inventory
+- Correct inventory where permitted
+- View current inventory
+- View expiration information
+- View and update the shopping list
+- Generate the available AI recipe prompt
 
 ### Administrator
 
-An administrator can additionally:
+An administrator has additional management permissions:
 
--   Manage products
--   Correct barcodes
--   Change product images
--   Correct expiration data
+- Manage users
+- Manage products
+- Manage storage locations
+- Deactivate products
+- Restore products where supported
+- Perform administrative inventory corrections
+- View transaction history
+
+The current implementation uses two roles:
+
+- `user`
+- `admin`
+
+Roles are stored directly on the user record. A separate roles table is not required.
+
+---
+
+## 2. Product Management
+
+A product represents reusable product information and is independent of individual inventory records.
+
+A product may contain:
+
+- Name
+- Barcode
+- Manufacturer
+- Unit
+- Default storage location
+- Minimum stock level
+- Ideal stock level
+- Product image
+- Active/inactive state
+
+Products can be created manually or populated from external product information sources.
+
+External product information must not silently overwrite trusted local product data.
+
+---
+
+## 3. Inventory Management
+
+Inventory represents the physical food currently associated with a product.
+
+An inventory record contains:
+
+- Product
+- Quantity
+- Expiration date
+- Storage location
+- Status
+- Optional image path
+- User who added the inventory
+- Creation timestamp
+- Consumption timestamp
+
+An inventory record may represent multiple physical units with the same expiration date and storage location.
+
+The system does **not** require every physical item to be represented by a separate database record.
+
+### Inventory statuses
+
+The current implementation supports the following inventory statuses:
+
+- `active`
+- `missing`
+- `consumed`
+- `deleted`
+
+`active` records represent physical stock.
+
+`missing` records represent stock that was requested or consumed but was not physically available.
+
+`consumed` records represent inventory that has been consumed.
+
+`deleted` records represent inventory that has been removed from active use.
+
+---
+
+## 4. Inventory Quantity
+
+The current product stock is calculated from inventory records.
+
+The `transactions` table records inventory operations but is not itself the source of the current stock quantity.
+
+For stock calculation:
+
+- `active` inventory contributes positively
+- `missing` inventory contributes negatively
+- `consumed` inventory does not contribute
+- `deleted` inventory does not contribute
+
+For example:
+
+```text
+Active inventory:   10
+Missing inventory:   2
+-----------------------
+Current stock:       8
+```
+
+Negative stock is therefore explicitly supported.
+
+If more food is consumed than is physically available, the backend creates a `missing` inventory record for the remaining shortage.
+
+For example:
+
+```text
+Available stock: 2
+Consume:         5
+
+Result:
+
+2 units consumed
+3 units recorded as missing
+
+Calculated stock: -3
+```
+
+The backend is responsible for applying these rules.
+
+* * *
+
+## 5\. Inventory Operations
+
+Inventory mutations are performed by the backend.
+
+Supported operations include:
+
+-   Add inventory
+-   Consume inventory
 -   Correct inventory
--   Manage storage locations
--   Manage minimum stock
--   Manage ideal stock
--   Manage users
--   Deactivate products
--   Restore products where supported
--   View audit history
 
-## 2\. Product Requirements
+The client must not blindly overwrite the complete inventory quantity based on stale locally cached data.
 
-A product represents reusable product information.
+Inventory changes should instead be represented as explicit operations.
 
-Example:
+### Client operation IDs
 
-```text
-Product:
-Tomato Sauce
+Inventory mutation requests may contain a client-generated `client_operation_id`.
 
-Barcode:
-4001234567890
+The backend uses this identifier to prevent the same operation from being applied more than once.
 
-Manufacturer:
-Example GmbH
+This provides idempotent operation replay and allows the mobile application to safely retry operations.
 
-Unit:
-piece
+This mechanism can also be used as a foundation for future offline workflows.
 
-Default location:
-Basement / Shelf 2
+It does not mean that the complete mobile application currently operates fully offline.
 
-Minimum stock:
-5
+* * *
 
-Ideal stock:
-10
-```
+## 6\. FEFO Consumption
 
-A product does not represent a physical food item.
+Inventory consumption follows **FEFO (First Expire, First Out)**.
 
-## 3\. Inventory Requirements
+When consuming inventory, the backend selects available inventory in the following order:
 
-Individual inventory units are stored separately.
+1.  Inventory with an expiration date
+2.  Earliest expiration date first
+3.  Earliest `added_at` timestamp as a secondary ordering criterion
 
-Example:
+Inventory without an expiration date is consumed after inventory with an expiration date.
 
-```text
-Milk 1.5%
+Inventory rows selected for consumption are locked during the database transaction to prevent conflicting concurrent consumption operations.
 
-02.09.2026
-05.09.2026
-05.09.2026
-12.09.2026
-20.09.2026
-```
+The mobile application must not implement a conflicting consumption algorithm.
 
-Each inventory unit has its own expiration date and storage location.
+* * *
 
-## 4\. Inventory Rules
+## 7\. Storage Locations
 
-The displayed inventory quantity is derived from active inventory units plus inventory adjustments represented by the transaction model.
+Inventory can be assigned to a storage location.
 
-Consumption follows FEFO:
+Examples include:
 
-> First Expire, First Out
+-   Refrigerator
+-   Freezer
+-   Pantry
+-   Basement
+-   Kitchen cabinet
 
-The inventory unit with the earliest expiration date should normally be consumed first.
+Storage locations are managed by the backend.
 
-The application must never rely on a client-side quantity overwrite for concurrent inventory operations.
+Products may also have a default storage location.
 
-## 5\. Negative Inventory
+The default product storage location is used as a convenience when creating inventory but does not prevent an inventory record from using another location.
 
-Negative inventory is explicitly supported.
+* * *
 
-Example:
+## 8\. Shopping List
 
-```text
-Current stock: -2
-Minimum stock: 5
-Ideal stock: 10
-```
+The shopping list is based on product stock levels.
 
-This represents a shortage of two units.
-
-## 6\. Shopping List Rules
-
-If:
+A product is considered below its minimum stock level when:
 
 ```text
 current_stock < minimum_stock
 ```
 
-the product must be represented on the shopping list.
+If the current stock is below the minimum stock level, the product can be placed on the shopping list.
 
-If an ideal stock is configured:
+If an ideal stock level is configured, the target purchase quantity is calculated using the ideal stock level.
 
-```text
-purchase_quantity = ideal_stock - current_stock
-```
+Otherwise, the minimum stock level is used.
 
-Otherwise:
+Conceptually:
 
 ```text
-purchase_quantity = minimum_stock - current_stock
+if ideal_stock is configured:
+    purchase_quantity = ideal_stock - current_stock
+else:
+    purchase_quantity = minimum_stock - current_stock
 ```
 
-Example:
+The calculated purchase quantity must not become negative.
+
+The backend updates the shopping-list state as part of relevant inventory operations.
+
+The current implementation does not use a separate background synchronization process that continuously recalculates every product.
+
+* * *
+
+## 9\. Shopping List States
+
+The shopping list supports the following states:
+
+-   `needed`
+-   `on_list`
+-   `purchased`
+-   `stocked`
+
+These states allow the shopping process to be tracked beyond a simple yes/no flag.
+
+The intended workflow is:
 
 ```text
-current = 4
-minimum = 5
-ideal = 10
-
-purchase = 10 - 4
-purchase = 6
+needed
+  ↓
+on_list
+  ↓
+purchased
+  ↓
+stocked
 ```
 
-Without an ideal stock:
+Future versions may connect the `purchased` and `stocked` states more closely to barcode scanning and inventory creation.
 
-```text
-current = 3
-minimum = 5
+* * *
 
-purchase = 5 - 3
-purchase = 2
-```
+## 10\. Expiration Date Management
 
-Negative inventory:
+Every inventory record may contain an expiration date.
 
-```text
-current = -2
-minimum = 5
+Expiration dates are used for:
 
-purchase = 5 - (-2)
-purchase = 7
-```
+-   Expiration warnings
+-   FEFO consumption
+-   Recipe prompt prioritization
+-   Inventory display
 
-This logic must exist centrally in the backend.
-
-## 7\. Expiration Categories
-
-Initial categories:
+The current expiration categories are:
 
 Category
 
-Rule
+Condition
 
 Expired
 
-expiration date is before today
+Expiration date is before today
 
 Urgent
 
-within 3 days
+Expires within 0–3 days
 
 Soon
 
-within 7 days
+Expires within 4–7 days
 
 Upcoming
 
-within 14 days
+More than 7 days away
 
-The thresholds must eventually become configurable.
+These thresholds are currently implemented as fixed values.
 
-## 8\. Barcode Processing
+### Future requirement
 
-Barcode recognition occurs locally on the smartphone.
+The expiration thresholds should eventually become configurable rather than hard-coded.
 
-The server receives the barcode value.
+* * *
 
-The backend then:
+## 11\. Expiration Date OCR
 
-1.  Searches the local product database.
-2.  If found, returns the product.
-3.  If not found, optionally queries Open Food Facts.
-4.  If Open Food Facts finds the product, the product can be proposed to the user.
-5.  The user confirms imported information.
-6.  If no product is found, the user can create it manually.
+Expiration-date OCR is intended to be performed locally on the mobile device.
 
-External product information must not automatically overwrite trusted local product information.
-
-## 9\. OCR
-
-OCR runs on the smartphone.
-
-The workflow is:
+The intended workflow is:
 
 ```text
 Camera
-  |
-  v
+  ↓
 Local OCR
-  |
-  v
-Candidate date
-  |
-  v
+  ↓
+Candidate expiration date
+  ↓
 Validation
-  |
-  v
+  ↓
 User confirmation
-  |
-  v
-Server
+  ↓
+Backend
 ```
 
-No OCR result may be silently persisted as a confirmed expiration date.
+OCR results are suggestions and must not automatically become trusted inventory data.
 
-## 10\. Optional Expiration Images
+The user must be able to review and confirm the detected expiration date before it is stored.
 
-Expiration images are optional.
+The backend stores the confirmed expiration date on the inventory record.
 
-Default:
+* * *
+
+## 12\. Expiration Images
+
+Persistent storage of expiration-date images is a planned feature.
+
+The intended future workflow is:
 
 ```text
 Capture image
-  -> OCR
-  -> Confirm
-  -> Delete image
+  ↓
+Local OCR
+  ↓
+Detect expiration date
+  ↓
+User confirmation
+  ↓
+Optional image upload
+  ↓
+Backend storage
 ```
 
-Optional:
+The current backend does not provide a complete persistent expiration-image workflow.
+
+The presence of an optional `save_expiration_image` field must therefore not be interpreted as full expiration-image support.
+
+Future implementation may add:
+
+-   Persistent expiration images
+-   Image metadata
+-   Image retention policies
+-   Image deletion
+-   Image access through the API
+
+* * *
+
+## 13\. Barcode Processing
+
+Barcode recognition is intended to be performed on the mobile device.
+
+The intended lookup sequence is:
 
 ```text
-Capture image
-  -> OCR
-  -> Confirm
-  -> Upload image
+Scan barcode
+  ↓
+Local FoodStock product database
+  ↓
+Product found?
+  ├── Yes → return local product
+  └── No  → external product lookup
 ```
 
-## 11\. Product Images
+The backend can use external product data sources such as Open Food Facts when a local product cannot be found.
 
-Product images may originate from:
+External data is treated as a suggestion.
 
--   Open Food Facts
--   User camera
--   User upload
+The current implementation does not automatically create or overwrite a trusted local product from an external lookup.
 
-Binary image data must not be stored directly in PostgreSQL.
+The user must confirm the information before it becomes trusted local product data.
 
-The database stores metadata and a storage reference.
+* * *
 
-## 12\. Shopping List States
+## 14\. Product Images
 
-The system must distinguish:
+Products can have an associated image.
 
--   Needed
--   On shopping list
--   Purchased
--   Added to inventory
+The current implementation stores the image file in application storage and stores the corresponding path/reference in the product record.
 
-The shopping-list workflow must support future integration with product scanning.
+Image binary data is not stored directly in PostgreSQL.
 
-## 13\. Audit Events
+The current product-image upload implementation supports:
 
-Important inventory and administrative actions must be recorded.
+-   JPEG
+-   PNG
+-   WebP
 
-Examples:
+The current maximum upload size is 10 MB.
 
--   Added
--   Consumed
--   Purchased
--   Corrected
--   Deleted
--   Restored
+A future dedicated file/object metadata system may be introduced if more advanced file management becomes necessary.
 
-Audit records should contain the actor, timestamp, target object, operation and relevant before/after information.
+* * *
 
-## 14\. Future AI Support
+## 15\. Inventory Images
 
-The first AI feature does not require an AI API.
+Inventory records may also contain an image path.
 
-FoodStock-Mobile generates a structured prompt and copies it to the clipboard.
+The current implementation uses application file storage rather than a dedicated database file-object model.
 
-The prompt prioritizes:
+Advanced image management is considered a future extension.
 
-1.  Food expiring soonest
-2.  Other available food
-3.  Minimal additional purchases
+* * *
 
-Direct AI API integration is a future optional feature.
+## 16\. Transactions and History
 
-## 15\. Future Meal Planning
+Inventory operations are recorded in the `transactions` table.
 
-The data model must support future meal planning without requiring a major database redesign.
+A transaction can contain:
 
-The future planner can use:
+-   User
+-   Product
+-   Inventory record
+-   Event
+-   Quantity delta
+-   Reason
+-   Client operation ID
+-   Creation timestamp
 
--   Inventory
--   Quantities
--   Expiration dates
--   Shopping list
--   Product categories
+The transaction history is intended to provide an operational history of inventory changes.
+
+Administrators can access transaction history.
+
+The transaction model is not currently a generic audit-event system.
+
+### Future audit requirements
+
+A future audit system may provide:
+
+-   Generic object targets
+-   Before/after values
+-   More detailed change information
+-   Audit events for additional entity types
+-   Administrative audit reporting
+
+These features are not part of the current transaction implementation.
+
+* * *
+
+## 17\. AI and Recipe Support
+
+FoodStock provides backend support for generating a recipe-oriented AI prompt.
+
+The current feature does not require a direct connection to an AI provider.
+
+The generated prompt is intended to prioritize food that should be consumed soon.
+
+The current implementation prioritizes inventory with expiration dates within the next 14 days.
+
+These items are ordered by expiration date.
+
+Other available inventory can then be included as additional ingredients.
+
+The generated prompt can be copied or passed to an external AI service by the client.
+
+### Future AI requirements
+
+Future versions may support:
+
+-   Direct AI provider integration
+-   Automatic recipe generation
+-   Structured recipe responses
+-   Meal planning
+-   Ingredient substitution
+-   Shopping-list integration
+
+* * *
+
+## 18\. Data Validation
+
+The backend is responsible for validating data received from clients.
+
+Validation includes:
+
+-   Required fields
+-   Data types
+-   Authentication
+-   Authorization
+-   Product references
+-   Storage-location references
+-   Inventory quantities
+-   Inventory operation parameters
+-   Image upload restrictions
+
+The mobile application may perform additional client-side validation for usability, but server-side validation remains authoritative.
+
+* * *
+
+## 19\. Authentication
+
+FoodStock uses token-based authentication.
+
+Users authenticate against the backend and receive a JWT access token.
+
+The backend uses the authenticated identity to determine:
+
+-   User identity
+-   User role
+-   Authorization
+
+Passwords are stored using secure password hashing and are never stored in plaintext.
+
+The current implementation does not provide a separate refresh-token system.
+
+* * *
+
+## 20\. Authorization
+
+Authorization is enforced by the backend.
+
+Client-side UI restrictions are not considered sufficient security controls.
+
+Administrative operations must require the administrator role.
+
+Examples include:
+
+-   User management
+-   Administrative inventory corrections
+-   Product administration
+-   Product image management
+-   Storage-location administration
+-   Transaction-history access
+
+The backend remains responsible for enforcing these permissions even if a malicious client bypasses the mobile application's UI restrictions.
+
+* * *
+
+## 21\. Data Ownership and Privacy
+
+FoodStock is designed for self-hosted household use.
+
+The household hosting the application owns and controls its inventory data.
+
+The PostgreSQL database must not be exposed directly to mobile clients.
+
+Mobile clients communicate with the FoodStock backend through its HTTP API.
+
+External services such as Open Food Facts are optional and should only receive the information required for the requested lookup.
+
+* * *
+
+## 22\. Offline and Retry Behavior
+
+The backend supports idempotent inventory mutation requests through `client_operation_id`.
+
+A client may safely retry the same operation using the same operation ID.
+
+The backend must not apply an already completed operation a second time.
+
+This provides the server-side foundation for reliable retry behavior.
+
+A complete offline-first mobile architecture, including:
+
+-   Local database
+-   Offline reads
+-   Offline mutation queue
+-   Synchronization
+-   Conflict resolution
+
+is not currently part of the implemented backend.
+
+* * *
+
+## 23\. Home Assistant Integration
+
+FoodStock-Home is designed to run as a Home Assistant application.
+
+The core FoodStock backend should remain responsible for its own business logic.
+
+Future Home Assistant integration may provide:
+
+-   Sensors
+-   Notifications
+-   Dashboard cards
+-   Automations
+-   Voice interaction
+
+The core inventory functionality must not depend on Home Assistant-specific APIs.
+
+* * *
+
+## 24\. Internationalization
+
+FoodStock is intended to support at least:
+
+-   English
+-   German
+
+The mobile application should use localized user-facing strings rather than hard-coded text.
+
+Technical documentation remains in English.
+
+* * *
+
+## 25\. Future Requirements
+
+The following features are planned but are not part of the current core implementation:
+
+-   Configurable expiration thresholds
+-   Persistent expiration images
+-   Advanced file metadata management
+-   Full offline-first mobile operation
+-   Conflict resolution and synchronization
+-   Direct AI provider integration
+-   Automatic recipe generation
+-   Meal planning
+-   Advanced Home Assistant integration
+-   Additional audit functionality
+-   Barcode-driven shopping-list completion
+-   Automatic product creation from external product data
+
+Future features must preserve the core principles of server-side business logic, household data ownership and safe inventory mutations.
