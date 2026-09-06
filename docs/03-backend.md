@@ -1,596 +1,102 @@
-# FoodStock Backend Specification
+Backend
+Technology
 
-## 1\. Backend Stack
+The current backend uses:
 
-### Aktuelle Doku
+    Python
+    FastAPI
+    SQLAlchemy 2
+    PostgreSQL
+    psycopg
+    Pydantic
+    JWT authentication
+    HTTPX for Open Food Facts requests
 
-Die Doku nennt unter anderem:
+The database layer is currently synchronous.
 
-```text
-FastAPI
-SQLAlchemy
-asyncpg
-Alembic
-Pydantic
-PostgreSQL
-```
+The implementation does not use asyncpg.
+Database Access
 
-### Tatsächlicher Stand
+Only the FoodStock backend communicates directly with PostgreSQL.
 
-Der aktuelle Dependency-Stand verwendet:
+The mobile application must never connect to PostgreSQL.
+Authentication
 
-```text
-FastAPI
-SQLAlchemy
-psycopg[binary]
-Pydantic
-PostgreSQL
-```
+Authentication uses:
 
-`asyncpg` ist aktuell nicht der verwendete PostgreSQL-Treiber. Die Datenbank-URL verwendet:
-
-```text
-postgresql+psycopg://
-```
-
-Das sollte unbedingt korrigiert werden.
-
-* * *
-
-# 2\. Alembic ist aktuell nicht implementiert
-
-Das ist eine der deutlichsten Fehlerstellen.
-
-Die Doku beschreibt:
-
-> Alembic is used for database schema migrations.
-
-Das stimmt derzeit nicht.
-
-Der aktuelle Backend-Start verwendet:
-
-```python
-Base.metadata.create_all(engine)
-```
-
-Damit werden die Tabellen beim Start aus den SQLAlchemy-Modellen erzeugt. (github.com)
-
-Es gibt aktuell kein funktionierendes Alembic-Migrationssystem, das wir als Teil der Backend-Architektur dokumentieren sollten.
-
-### Änderung
-
-Statt:
-
-```text
-Alembic is used for database schema migrations.
-```
-
-sollte dort stehen:
-
-> The current implementation initializes the database schema using SQLAlchemy metadata during application startup. A dedicated migration framework such as Alembic is not currently implemented.
-
-Falls Alembic später eingeführt wird, kann die Dokumentation dann entsprechend aktualisiert werden.
-
-* * *
-
-# 3\. Projektstruktur stimmt nicht
-
-Die Doku beschreibt eine Struktur in Richtung:
-
-```text
-app/
-├── api/
-├── core/
-├── models/
-├── schemas/
-├── services/
-└── migrations/
-```
-
-Der tatsächliche aktuelle Code liegt wesentlich flacher:
-
-```text
-foodstock/
-└── app/
-    ├── main.py
-    ├── models.py
-    ├── database.py
-    ├── schemas.py
-    └── ...
-```
-
-Der größte Teil der Endpoints und Business-Logik befindet sich momentan in `main.py`. (github.com)
-
-### Empfehlung
-
-Nicht behaupten, dass die modulare Struktur bereits existiert.
-
-Wenn wir sie weiterhin als Ziel wollen:
-
-```text
-Current structure
-```
-
-und separat:
-
-```text
-Target structure
-```
-
-Das hatten wir schon bei `02` — hier sollte die Backend-Doku konsistent sein.
-
-* * *
-
-# 4\. Application Startup
-
-Der Startup-Ablauf in der Doku ist teilweise richtig, aber sollte genauer werden.
-
-Aktuell passiert beim Start unter anderem:
-
-```text
-Create database engine
-↓
-Create database tables
-↓
-Create storage directories
-↓
-Initialize default storage locations
-↓
-Initialize initial admin
-↓
-Start FastAPI
-```
-
-Die Anwendung legt die benötigten Storage-Verzeichnisse an und initialisiert unter anderem Standard-Lagerorte. (github.com)
-
-Außerdem wird ein initialer Admin-Account über die konfigurierten Environment-Variablen vorbereitet.
-
-Das sollte in `03` explizit dokumentiert werden.
-
-* * *
-
-# 5\. Database Initialization
-
-Die Doku spricht aktuell von:
-
-> migrations are executed on startup
-
-Das ist falsch.
-
-Aktuell:
-
-```text
-SQLAlchemy Base.metadata.create_all()
-```
-
-Das bedeutet:
-
--   fehlende Tabellen werden erzeugt
--   bestehende Tabellen werden nicht über Migrationen versioniert
--   Schemaänderungen werden nicht automatisch als Migration ausgeführt
-
-Das ist ein wichtiger Unterschied.
-
-* * *
-
-# 6\. Authentication
-
-Die aktuelle Doku beschreibt ein komplexeres Auth-System, als tatsächlich vorhanden ist.
-
-Aktuell existieren:
-
-```text
 POST /auth/token
-GET /auth/me
-```
 
-Der Login verwendet OAuth2 Password Form und gibt einen JWT Access Token zurück. (github.com)
+The endpoint follows the OAuth2 password form convention used by FastAPI.
 
-Es gibt aktuell **nicht**:
+The response contains a JWT access token.
 
-```text
-/auth/login
-/auth/refresh
-/auth/logout
-```
+The token contains:
 
-als separates API-Modell.
+    user ID
+    role
+    expiration time
 
-Insbesondere ein Refresh-Token-System ist derzeit nicht implementiert.
+The token is signed using the configured JWT secret.
 
-### Daher
+The current implementation does not provide:
 
-Die Backend-Doku sollte beschreiben:
+    refresh tokens
+    logout
+    token revocation
 
-```text
-User credentials
-      ↓
-POST /auth/token
-      ↓
-JWT access token
-      ↓
-Authorization: Bearer <token>
-```
+Inactive users cannot authenticate successfully.
+Authorization
 
-und nicht ein Login/Refresh/Logout-System dokumentieren, das es aktuell nicht gibt.
+Authorization is enforced server-side.
 
-* * *
+The two roles are:
 
-# 7\. Password Storage
-
-Dieser Teil ist grundsätzlich korrekt.
-
-Passwörter werden nicht im Klartext gespeichert.
-
-Die aktuelle Implementierung verwendet einen Password-Hashing-Mechanismus über `pwdlib`/Argon2. (github.com)
-
-Hier würde ich allerdings prüfen, ob die aktuelle Doku noch explizit **bcrypt** nennt.
-
-Falls dort steht:
-
-```text
-bcrypt
-```
-
-muss das korrigiert werden.
-
-Der aktuelle Code verwendet Argon2-basierte Password-Hashing-Unterstützung.
-
-Das ist wichtig, weil wir bei Security-Dokumentation exakt sein sollten.
-
-* * *
-
-# 8\. Authorization
-
-Das Prinzip der Doku ist korrekt:
-
-> Authorization is enforced server-side.
-
-Der aktuelle Code verwendet Role Checks für Admin-Funktionen. (github.com)
-
-Die Doku sollte aber die tatsächlich vorhandenen Rollen nennen:
-
-```text
 user
 admin
-```
 
-und keine zusätzliche Permission-/Role-Hierarchie suggerieren.
+Administrator-only operations must never rely on client-side visibility or UI restrictions.
+Passwords
 
-Es gibt aktuell kein komplexes RBAC-System.
+Passwords are stored as password hashes.
 
-* * *
+Plain-text passwords must never be stored in the database or returned by the API.
+Health
 
-# 9\. Product API
+Current system endpoints include:
 
-Der aktuelle Backend-Code unterstützt unter anderem:
+GET /
+GET /health
+GET /database-configured
 
-```text
-GET    /products
-POST   /products
-PATCH  /products/{product_id}
-DELETE /products/{product_id}
-```
+/health performs a database connectivity check.
 
-sowie Barcode- und Bildfunktionen. (github.com)
+A separate /ready endpoint is not currently implemented.
+Error Handling
 
-Hier muss die Doku insbesondere prüfen, ob noch alte `/api/v1/...`\-Pfade verwendet werden.
+The current backend uses FastAPI HTTPException responses.
 
-Falls ja:
+The error contract is therefore currently based on FastAPI's standard detail response.
 
-❌ entfernen.
+A structured application-specific error code model is a future improvement.
 
-Die aktuelle API verwendet keine solche `/api/v1`\-Prefix-Struktur.
+Clients must not depend on localized error text as a stable machine-readable identifier.
+Logging
 
-* * *
+Operational logs must not contain:
 
-# 10\. Inventory API
+    passwords
+    password hashes
+    JWT secrets
+    access tokens
+    database credentials
 
-Die aktuelle Inventory-API ist ebenfalls anders als die alte Doku.
+Future observability improvements may add request IDs and structured logging.
+Database Migrations
 
-Relevant sind aktuell:
+The current repository does not contain an Alembic migration system.
 
-```text
-POST /inventory
-POST /products/{product_id}/consume
-POST /products/{product_id}/correct
-GET  /inventory
-GET  /expiring
-```
+SQLAlchemy models define the current schema.
 
-(github.com)
+Alembic must therefore not be described as an implemented dependency until migration infrastructure has actually been added.
 
-Die Backend-Doku sollte hier besonders deutlich machen:
-
-### Add inventory
-
-Erzeugt einen Inventory Record.
-
-### Consume
-
-Führt serverseitig FEFO aus.
-
-### Correct
-
-Korrigiert Bestand serverseitig.
-
-### Inventory
-
-Liefert den aktuell berechneten Bestand.
-
-### Expiring
-
-Liefert Ablauf-/MHD-relevante Bestände.
-
-* * *
-
-# 11\. Inventory Consumption
-
-Dieser Abschnitt ist wichtig und sollte sehr detailliert bleiben.
-
-Der Code macht nicht einfach:
-
-```text
-quantity -= requested_quantity
-```
-
-sondern:
-
-```text
-Find active inventory
-↓
-Sort by expiration date
-↓
-Lock selected rows
-↓
-Consume available quantity
-↓
-Create missing quantity if necessary
-↓
-Record transaction
-↓
-Update shopping list
-↓
-Commit
-```
-
-Das ist die tatsächliche Business-Logik. (github.com)
-
-Das sollte in `03-backend.md` als zentraler Backend-Prozess dokumentiert werden.
-
-* * *
-
-# 12\. Idempotency
-
-Die aktuelle Doku unterschätzt bzw. übersieht hier ein gutes Feature.
-
-Der Code unterstützt:
-
-```text
-client_operation_id
-```
-
-bei Inventory-Mutationen.
-
-Wenn dieselbe Operation erneut mit derselben ID gesendet wird, wird sie nicht noch einmal angewendet. (github.com)
-
-Das sollte unbedingt in die Backend-Dokumentation.
-
-Beispiel:
-
-```text
-Client
-  |
-  | operation_id = ABC
-  v
-Backend
-  |
-  ├── Operation not seen → execute
-  |
-  └── Operation already seen → ignore/reuse result
-```
-
-Das ist insbesondere für Mobile-Retries wichtig.
-
-* * *
-
-# 13\. Shopping List
-
-Der aktuelle Code synchronisiert die Shopping List während relevanter Inventory-Operationen.
-
-Die Doku sollte deshalb nicht behaupten, dass ein separater Scheduler oder Hintergrundjob die gesamte Liste kontinuierlich aktualisiert.
-
-Aktuell ist die Logik eng an Inventory-Änderungen gekoppelt. (github.com)
-
-* * *
-
-# 14\. Barcode Lookup
-
-Der Backend-Ablauf ist:
-
-```text
-GET /scan/{barcode}
-```
-
-Zuerst wird lokal gesucht.
-
-Nur wenn kein lokales Produkt gefunden wird, wird Open Food Facts angefragt.
-
-Das Ergebnis kann eine externe Produktsuggestion enthalten. (github.com)
-
-Wichtig:
-
-**Die Barcode-API legt das externe Produkt nicht automatisch als lokales Produkt an.**
-
-Das sollte in `03` klar stehen.
-
-* * *
-
-# 15\. Product Images
-
-Der aktuelle Upload:
-
-```text
-POST /products/{product_id}/image
-```
-
-ist vorhanden.
-
-Die Implementierung:
-
--   akzeptiert JPEG
--   akzeptiert PNG
--   akzeptiert WebP
--   begrenzt die Uploadgröße
--   speichert die Datei im Application Storage
--   schreibt den Pfad in `image_path`
-
-(github.com)
-
-Die Doku sollte kein separates `file_objects`\-System voraussetzen.
-
-* * *
-
-# 16\. AI Prompt
-
-Der aktuelle Backend-Endpoint:
-
-```text
-GET /ai/prompt
-```
-
-ist tatsächlich implementiert.
-
-Die Funktion erstellt einen Prompt aus dem vorhandenen Inventory.
-
-Der aktuelle Code berücksichtigt insbesondere Lebensmittel mit MHD innerhalb eines definierten Zeitraums und sortiert diese nach Ablaufdatum. (github.com)
-
-Die Doku sollte daher klar zwischen:
-
-```text
-AI prompt generation
-```
-
-und:
-
-```text
-AI provider integration
-```
-
-unterscheiden.
-
-Ersteres existiert.
-
-Zweiteres nicht.
-
-* * *
-
-# 17\. Transactions
-
-Der aktuelle Backend-Code schreibt Transaktionen bei Inventory-Operationen.
-
-Die Doku sollte aber nicht von einem generischen Audit Framework sprechen.
-
-Aktuelles Modell:
-
-```text
-Transaction
-├── product_id
-├── inventory_id
-├── user_id
-├── event
-├── quantity_delta
-├── reason
-├── client_operation_id
-└── created_at
-```
-
-(github.com)
-
-Das ist eine **Inventory Transaction History**, keine universelle Audit Engine.
-
-* * *
-
-# 18\. Error Handling
-
-Hier würde ich die aktuelle API stärker an den tatsächlichen HTTP-Responses ausrichten.
-
-Beispielsweise werden unter anderem verwendet:
-
-```text
-400 Bad Request
-401 Unauthorized
-403 Forbidden
-404 Not Found
-409 Conflict
-413 Request Entity Too Large
-```
-
-je nach Fehlerfall. (github.com)
-
-Falls `03-backend.md` derzeit eigene, nicht implementierte Fehlercodes definiert, sollten wir diese gegen den Code austauschen.
-
-* * *
-
-# 19\. Database Transactions
-
-Dieser Abschnitt sollte unbedingt erhalten bleiben.
-
-Die Inventory-Mutations sind transaktional.
-
-Insbesondere:
-
-```text
-Consume
-↓
-Inventory changes
-↓
-Transaction record
-↓
-Shopping-list update
-↓
-Commit
-```
-
-sollten zusammen erfolgen.
-
-Das verhindert einen Zustand, in dem beispielsweise Inventory verändert wurde, aber die zugehörige Transaction nicht geschrieben wurde.
-
-* * *
-
-# 20\. Was ich in `03` ändern würde
-
-### 🔴 Definitiv korrigieren
-
--   `asyncpg` → `psycopg`
--   Alembic als aktuell vorhanden entfernen
--   aktuelle Projektstruktur dokumentieren
--   `/api/v1/...` entfernen, falls vorhanden
--   `/auth/login`, `/auth/refresh`, `/auth/logout` entfernen
--   JWT Access Token über `/auth/token` dokumentieren
--   Password hashing auf aktuellen Mechanismus korrigieren
--   `roles`/RBAC nicht übertreiben
--   `file_objects` entfernen
--   generisches Audit-System → Transactions
--   Inventory-API an aktuellen Code anpassen
-
-### 🟠 Ergänzen
-
--   `client_operation_id`
--   Idempotency
--   `MISSING`\-Inventory
--   FEFO mit Row Locking
--   Shopping-List-Update bei Inventory-Operationen
--   tatsächlichen Startup-Prozess
--   AI Prompt Endpoint
--   tatsächliches Image Storage Verhalten
-
-### 🟢 Beibehalten
-
--   FastAPI
--   SQLAlchemy
--   PostgreSQL
--   Server-side business logic
--   Transactional inventory mutations
--   Backend authorization
--   Mobile → API → database boundary
+Before production-style upgrades are required, a proper migration strategy should be introduced.
