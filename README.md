@@ -372,6 +372,7 @@ The following features are planned for future development:
 -   Meal planning
 -   Optional integration with external AI services
 -   Additional reporting and inventory insights
+-   Product groups and intelligent product equivalence
 
 ## Architectural Changes
 
