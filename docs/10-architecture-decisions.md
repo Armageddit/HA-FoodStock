@@ -1,873 +1,143 @@
 # Architecture Decisions
 
-This document records the major architectural decisions made for FoodStock.
+## ADR-001: PostgreSQL as the source of truth
 
-Architecture decisions describe the intended structure of the system and the reasoning behind it. They should be updated when an existing decision is deliberately changed or superseded.
+**Decision:** PostgreSQL is the authoritative persistence layer.
 
-The current implementation is the authoritative reference for implemented behavior.
+**Reason:** FoodStock is a shared household application. Centralized persistence prevents conflicting client-side inventory state.
 
-* * *
+**Consequence:** Mobile clients must not write directly to the database.
 
-## ADR-001 — Self-Hosted Architecture
+## ADR-002: FastAPI backend
 
-### Status
+**Decision:** Use FastAPI for the FoodStock API.
 
-**Accepted**
+**Reason:** It provides typed request/response models, OpenAPI documentation, authentication integration, and a small operational footprint.
 
-### Decision
+## ADR-003: SQLAlchemy
 
-FoodStock is designed as a self-hosted household application.
+**Decision:** Use SQLAlchemy 2 with synchronous database access.
 
-The primary deployment target is a Raspberry Pi running Home Assistant OS.
+**Reason:** The current application has a small workload and does not require an asynchronous database driver.
 
-### Reason
+**Current driver:** `psycopg`.
 
-The primary goals are:
+`asyncpg` is not part of the current implementation.
 
--   Household data ownership
--   Privacy
--   Low recurring cost
--   No mandatory cloud infrastructure
--   Reliable operation within the home network
+## ADR-004: Enum-based roles
 
-### Consequences
+**Decision:** Store the user role as an application enum.
 
-#### Positive
+**Reason:** FoodStock currently has only two fixed roles.
 
--   Data remains under household control
--   No mandatory cloud database
--   No mandatory Firebase dependency
--   Low recurring infrastructure cost
--   Works within an existing Home Assistant environment
+A separate `roles` table would add complexity without a current functional benefit.
 
-#### Negative
+If dynamic permissions are required later, this decision can be revisited.
 
--   Backup responsibility remains with the operator
--   Hardware failures must be handled locally
--   Network and VPN configuration remain deployment responsibilities
--   Updates and infrastructure maintenance require local administration
+## ADR-005: Inventory entries instead of a single stock counter
 
-* * *
+**Decision:** Store inventory entries with quantity, expiration date, location, and status.
 
-## ADR-002 — FoodStock-Home as a Home Assistant App
+**Reason:** This allows FoodStock to perform FEFO consumption and retain meaningful stock history.
 
-### Status
+The current model represents batches/entries rather than strictly one database row per physical item.
 
-**Accepted**
+## ADR-006: FEFO consumption
 
-### Decision
+**Decision:** Consume stock using First Expire, First Out.
 
-The backend is deployed as the Home Assistant application:
+**Reason:** For food, expiration date is more important than simple insertion order.
 
-```text
-FoodStock-Home
-```
+Tie-breaking uses the inventory creation timestamp.
 
-### Reason
+## ADR-007: Negative inventory
 
-The target environment already runs Home Assistant OS.
+**Decision:** Negative stock is explicitly supported.
 
-Using the Home Assistant App model avoids modifying the Home Assistant host directly and allows Home Assistant to manage the application's lifecycle.
+**Reason:** Real households may discover a shortage that was not previously recorded.
 
-### Consequences
+A `MISSING` inventory entry represents the shortage.
 
-#### Positive
+This avoids silently modifying a product-level stock counter.
 
--   Supervisor-managed lifecycle
--   Container isolation
--   Persistent application storage
--   Home Assistant integration potential
--   Consistent deployment model
+## ADR-008: Transaction-based idempotency
 
-#### Negative
+**Decision:** Inventory mutation requests may include a client operation UUID.
 
--   Home Assistant App restrictions apply
--   Storage mappings must be designed carefully
--   Host-level server administration is intentionally limited
--   Conventional Docker/server deployment patterns may not apply directly
+**Reason:** Mobile clients may retry requests because of connectivity problems.
 
-* * *
+A unique database constraint prevents duplicate application of the same operation.
 
-## ADR-003 — FastAPI Backend
+## ADR-009: External barcode enrichment
 
-### Status
+**Decision:** Open Food Facts is used as an optional enrichment source.
 
-**Accepted**
+**Reason:** It provides useful product metadata without requiring FoodStock to maintain a global product catalog.
 
-### Decision
+External data remains untrusted until accepted locally.
 
-FoodStock uses FastAPI as its backend framework.
+## ADR-010: Filesystem image storage
 
-### Reason
+**Decision:** Product images are stored on the FoodStock filesystem.
 
-FastAPI provides:
+**Reason:** Binary image data does not need to be stored in PostgreSQL for the current household use case.
 
--   Request validation
--   OpenAPI generation
--   Type-safe API definitions
--   Good Python ecosystem integration
--   Low infrastructure complexity
--   Suitable performance for the target hardware
+The database stores the relative file path.
 
-The existing backend was already implemented using FastAPI, making continued use preferable to introducing a different framework.
+A generalized object-storage abstraction is deferred until it provides a real benefit.
 
-### Consequences
+## ADR-011: No API version prefix yet
 
-#### Positive
+**Decision:** The current API uses its existing route structure without `/api/v1`.
 
--   Existing backend can be extended
--   Automatic API documentation
--   Pydantic-based validation
--   Straightforward Python integration
--   Lightweight deployment
+**Reason:** The current backend is an internal application and there are no established external API consumers.
 
-#### Negative
+If the API becomes a stable public or multi-client contract, versioning should be introduced deliberately.
 
--   Business logic must be implemented explicitly
--   Authentication and authorization require application-level implementation
--   Offline synchronization requires explicit design and implementation
+## ADR-012: Offline synchronization is not yet part of the API
 
-* * *
+**Decision:** Do not document or implement a generic `/sync` endpoint yet.
 
-## ADR-004 — PostgreSQL as the Authoritative Database
+**Reason:** Reliable synchronization requires an explicit command, conflict, retry, and reconciliation model.
 
-### Status
-
-**Accepted**
-
-### Decision
-
-PostgreSQL is the primary and authoritative persistent database for FoodStock.
-
-The backend communicates with PostgreSQL through SQLAlchemy.
-
-### Reason
-
-FoodStock requires:
-
--   Relational data
--   Referential integrity
--   Database transactions
--   Concurrent updates
--   Row-level locking for critical inventory operations
--   Reliable persistence
-
-### Consequences
-
-#### Positive
-
--   Strong relational consistency
--   Transaction support
--   Concurrent access support
--   Mature database technology
--   Good SQLAlchemy integration
-
-#### Negative
-
--   Requires a separate database service
--   Requires database backup procedures
--   Requires database monitoring and maintenance
--   PostgreSQL must be protected from direct external access
-
-### Migration Note
-
-The current implementation does **not** use Alembic or another versioned migration framework.
-
-Database tables are currently initialized using SQLAlchemy metadata.
-
-Future introduction of a migration system would require a separate architectural decision.
-
-* * *
-
-## ADR-005 — TimescaleDB Compatibility
-
-### Status
-
-**Accepted**
-
-### Decision
-
-FoodStock remains compatible with the existing PostgreSQL/TimescaleDB environment.
-
-FoodStock currently uses standard PostgreSQL functionality.
-
-### Reason
-
-The target Home Assistant environment may already provide PostgreSQL through a TimescaleDB installation.
-
-FoodStock does not currently require TimescaleDB-specific time-series functionality.
-
-### Consequences
-
--   The existing PostgreSQL/TimescaleDB installation can be reused.
--   FoodStock remains largely portable to standard PostgreSQL.
--   No TimescaleDB-specific schema is required.
--   Introducing time-series functionality in the future would require a separate architectural decision.
-
-* * *
-
-## ADR-006 — Mobile Does Not Access PostgreSQL
-
-### Status
-
-**Accepted**
-
-### Decision
-
-FoodStock-Mobile communicates exclusively with the FoodStock API.
-
-The mobile application must never connect directly to PostgreSQL.
-
-```text
-FoodStock-Mobile
-       |
-       | HTTP(S) API
-       v
-FoodStock Backend
-       |
-       | SQLAlchemy
-       v
-PostgreSQL
-```
-
-### Reason
-
-Direct database access from the mobile application would:
-
--   Expose database credentials
--   Bypass authorization
--   Bypass validation
--   Bypass business rules
--   Make schema changes harder
--   Increase the attack surface
-
-### Consequences
-
-All business rules remain centralized in the backend.
-
-The mobile application sends commands and requests data through the API.
-
-The mobile client must not send calculated replacement stock values to the server.
-
-* * *
-
-## ADR-007 — Barcode Processing
-
-### Status
-
-**Accepted**
-
-### Decision
-
-Barcode scanning and barcode lookup are separate concerns.
-
-The client may perform barcode recognition locally using the device camera.
-
-The backend is responsible for resolving the resulting barcode value.
-
-The current backend provides:
-
-```http
-GET /scan/{barcode}
-```
-
-### Reason
-
-Keeping camera-based barcode recognition on the device:
-
--   Reduces server processing
--   Improves responsiveness
--   Allows recognition to work without an active API connection
--   Keeps the backend independent of camera hardware
-
-Only the resulting barcode value needs to be sent to the backend for product lookup.
-
-### Consequences
-
-The architecture separates:
-
-```text
-Camera
-   |
-   v
-Barcode recognition
-   |
-   v
-Barcode value
-   |
-   v
-FoodStock API
-   |
-   v
-Local / external product lookup
-```
-
-The backend remains responsible for product lookup and product data.
-
-* * *
-
-## ADR-008 — Local Expiration-Date OCR
-
-### Status
-
-**Planned**
-
-### Decision
-
-Expiration-date OCR is intended to run locally on the Android device.
-
-### Reason
-
-Expiration-date images may contain private household information and generally do not need to be uploaded to a server for recognition.
-
-Local OCR can also provide:
-
--   Lower latency
--   Offline operation
--   Reduced server processing
--   Better privacy
-
-### Consequences
-
-The planned mobile workflow is:
-
-```text
-Camera
-   |
-   v
-Local OCR
-   |
-   v
-Detected date
-   |
-   v
-User confirmation
-   |
-   v
-FoodStock API
-```
-
-The user must confirm OCR results before they are used for inventory data.
-
-This decision does not imply that local OCR is currently implemented in the backend.
-
-* * *
-
-## ADR-009 — Quantity-Based Inventory Records
-
-### Status
-
-**Accepted — Supersedes the previous individual-unit design**
-
-### Decision
-
-FoodStock represents inventory using quantity-based inventory records.
-
-The current database model is:
-
-```text
-Product
-   |
-   +-- Inventory
-```
-
-An `Inventory` record contains a quantity rather than representing exactly one physical item.
-
-For example:
-
-```text
-Product: Milk
-Quantity: 5
-Expiration: 2026-09-20
-Location: Refrigerator
-```
-
-is represented by one inventory record with:
-
-```text
-quantity = 5
-```
-
-### Reason
-
-The current application model is designed around quantities while still allowing inventory batches to differ by:
-
--   Expiration date
--   Storage location
--   Status
--   Image
--   Creation information
-
-Multiple inventory records can therefore exist for the same product.
-
-For example:
-
-```text
-Milk
-├── Inventory #1
-│   quantity = 3
-│   expiration = 2026-09-10
-│   location = Refrigerator
-│
-└── Inventory #2
-    quantity = 5
-    expiration = 2026-09-20
-    location = Pantry
-```
-
-This preserves the information required for FEFO consumption without requiring one database row per physical item.
-
-### Consequences
-
-#### Positive
-
--   Smaller database representation
--   Simple quantity management
--   Different expiration dates remain possible
--   Different storage locations remain possible
--   FEFO remains possible
--   Inventory operations remain transactional
-
-#### Negative
-
--   Individual physical items are not separately identified
--   Item-level tracking is not available
--   Future item-level tracking would require a new model or architectural decision
-
-### Important Stock Rule
-
-Individual inventory quantities are not used to represent negative quantities.
-
-A confirmed shortfall can instead be represented using the `missing` inventory status.
-
-This allows calculated stock to become negative while individual inventory quantities remain non-negative.
-
-* * *
-
-## ADR-010 — Server-Side Inventory Transactions
-
-### Status
-
-**Accepted**
-
-### Decision
-
-Inventory changes are performed by the FoodStock backend.
-
-Clients send commands such as:
-
-```text
-consume
-correct
-add inventory
-```
-
-rather than sending a calculated replacement stock value.
-
-### Reason
-
-Client-side quantity calculations can produce race conditions.
-
-For example:
-
-```text
-Client A reads stock = 5
-Client B reads stock = 5
-
-Client A consumes 2
-Client B consumes 3
-```
-
-If both clients independently calculate a replacement value, one update can overwrite the other.
-
-The backend can instead perform the operation transactionally.
-
-### Consequences
-
--   Inventory changes are centralized
--   Business rules remain server-side
--   Concurrent operations can be controlled transactionally
--   Database locking can be used where necessary
--   Transaction history can be generated consistently
-
-* * *
-
-## ADR-011 — FEFO Inventory Consumption
-
-### Status
-
-**Accepted**
-
-### Decision
-
-Inventory consumption uses FEFO:
-
-**First Expire, First Out**
-
-When multiple active inventory records exist for the same product, records with the earliest applicable expiration date are consumed first.
-
-### Reason
-
-FoodStock manages household food and should preferentially consume products that expire sooner.
-
-### Consequences
-
-The backend must consider inventory expiration dates when processing consumption requests.
-
-The mobile client must not implement its own independent FEFO algorithm.
-
-The backend remains authoritative.
-
-* * *
-
-## ADR-012 — Idempotent Inventory Operations
-
-### Status
-
-**Accepted**
-
-### Decision
-
-Inventory mutation requests support a client-generated:
-
-```text
-client_operation_id
-```
-
-The transaction table enforces uniqueness for this operation identifier.
-
-### Reason
-
-Mobile clients operate over networks where requests can fail after reaching the server.
-
-Without idempotency, a retry could apply the same inventory operation twice.
-
-### Consequences
-
-A client can safely retry a supported mutation using the same operation ID.
-
-The backend can detect that the operation has already been processed.
-
-This mechanism is especially important for future offline and unreliable-network support.
-
-* * *
-
-## ADR-013 — No Mandatory AI Provider
-
-### Status
-
-**Accepted**
-
-### Decision
-
-FoodStock does not require a paid or external AI provider for its core functionality.
-
-The backend can generate an AI prompt from current inventory data.
-
-The current API provides:
-
-```http
-GET /ai/prompt
-```
-
-### Reason
-
-The basic application should remain usable without:
-
--   AI API credentials
--   Subscription fees
--   External AI availability
--   Mandatory cloud services
-
-### Consequences
-
-Users can copy the generated prompt to an external AI service of their choice.
-
-Future direct AI integrations may be added as optional functionality.
-
-Core inventory functionality must remain independent of AI services.
-
-* * *
-
-## ADR-014 — English Technical Documentation
-
-### Status
-
-**Accepted**
-
-### Decision
-
-All technical project documentation is written in English.
-
-This includes:
-
--   Architecture documentation
--   API documentation
--   Database documentation
--   Security documentation
--   Development documentation
--   Architecture Decision Records
-
-### Reason
-
-English provides consistent terminology for:
-
--   Source code
--   APIs
--   Infrastructure
--   Frameworks
--   Libraries
--   External technical documentation
-
-### Consequences
-
-The application itself may support multiple user-facing languages.
-
-Technical documentation remains English-only.
-
-* * *
-
-## ADR-015 — Explicit Application Names
-
-### Status
-
-**Accepted**
-
-### Decision
-
-The two main application components use the following names:
-
-```text
-FoodStock-Home
-FoodStock-Mobile
-```
-
-### Meaning
-
-**FoodStock-Home**
-
-The server-side application running in the Home Assistant environment.
-
-**FoodStock-Mobile**
-
-The client application used on mobile devices.
-
-### Reason
-
-Using explicit names prevents confusion between the backend and mobile client.
-
-### Consequences
-
-Repositories, documentation, configuration, screenshots and UI references should use these names consistently.
-
-* * *
-
-## ADR-016 — Backend Is the Source of Truth
-
-### Status
-
-**Accepted**
-
-### Decision
-
-The FoodStock backend and PostgreSQL database are authoritative for persistent inventory state.
-
-The mobile client is a consumer of that state and sends commands to modify it.
-
-### Reason
-
-Inventory state must remain consistent across:
-
--   Multiple mobile clients
--   Web clients
--   Concurrent users
--   Future offline clients
--   Home Assistant integrations
-
-Allowing clients to independently become authoritative would create synchronization and consistency problems.
-
-### Consequences
-
-The client should:
-
--   Request current state from the backend
--   Send explicit commands
--   Use `client_operation_id` for retryable mutations
--   Never directly modify database state
--   Never directly access PostgreSQL
-
-The backend should:
-
--   Validate commands
--   Apply business rules
--   Perform transactional updates
--   Record inventory transactions
--   Return the resulting state
-
-* * *
-
-## ADR-017 — Authentication and Authorization Are Backend Responsibilities
-
-### Status
-
-**Accepted**
-
-### Decision
-
-Authentication and authorization are enforced by the FoodStock backend.
-
-The current authentication mechanism uses JWT access tokens.
-
-The current application roles are:
-
-```text
-user
-admin
-```
-
-### Reason
-
-Client-side authorization is insufficient because clients can be modified or bypassed.
-
-The backend must therefore independently validate:
-
--   Token validity
--   Token expiration
--   User identity
--   User active status
--   Administrator privileges where required
-
-### Consequences
-
-The mobile and web applications may hide functionality that the current user cannot access, but this is only a usability measure.
-
-It is not a security boundary.
-
-* * *
-
-## ADR-018 — Persistent Files Are Stored Outside PostgreSQL
-
-### Status
-
-**Accepted**
-
-### Decision
-
-Binary application files such as product images are stored in the FoodStock persistent filesystem rather than directly inside PostgreSQL.
-
-The database stores the corresponding file path/reference.
-
-The application data directory is configurable and defaults to:
-
-```text
-/data/foodstock
-```
-
-### Reason
-
-Storing image files separately:
-
--   Keeps PostgreSQL focused on relational data
--   Avoids unnecessarily large database records
--   Simplifies file handling
--   Allows filesystem-level backup of binary data
-
-### Consequences
-
-Database backups alone are not sufficient to restore a complete FoodStock installation.
-
-Backups must also include the relevant FoodStock filesystem data.
-
-* * *
-
-## ADR-019 — Home Assistant Is the Deployment Boundary
-
-### Status
-
-**Accepted**
-
-### Decision
-
-FoodStock is designed to operate inside the Home Assistant environment rather than modifying the underlying Home Assistant OS directly.
-
-### Reason
-
-The target platform is Home Assistant OS.
-
-Using the Home Assistant application boundary provides:
-
--   Isolation
--   Lifecycle management
--   Persistent storage configuration
--   Controlled resource usage
--   Easier installation and removal
-
-### Consequences
-
-FoodStock should not require:
-
--   Host-level Docker administration
--   Host-level package installation
--   Direct host filesystem manipulation
--   Unnecessary privileged access
-
-Deployment-specific security settings remain the responsibility of the Home Assistant configuration.
-
-* * *
-
-# Superseded Decisions
-
-## Superseded ADR — Individual Inventory Units
-
-The previous architecture described inventory as individual physical units:
-
-```text
-Product
-   |
-   +-- Inventory Unit
-   +-- Inventory Unit
-   +-- Inventory Unit
-```
-
-This decision is no longer valid.
-
-It has been replaced by **ADR-009 — Quantity-Based Inventory Records**.
-
-The current architecture is:
-
-```text
-Product
-   |
-   +-- Inventory Record
-           quantity = N
-           expiration_date = ...
-           storage_location = ...
-```
-
-Multiple inventory records can still represent different batches, expiration dates or locations.
-
-The previous decision must not be used as the basis for new implementation work.
-
-* * *
-
-# Decision Maintenance
-
-Architecture decisions should be reviewed whenever the implementation changes substantially.
-
-In particular, changes involving:
-
--   Database structure
--   Authentication
--   API architecture
--   Mobile synchronization
--   Offline operation
--   Storage
--   Deployment
--   External services
--   AI integration
-
-should result in a review of the relevant ADR.
-
-A new architectural decision should be added when an existing decision is deliberately changed rather than silently changing the documentation.
-
-The repository code remains the authoritative source for currently implemented behavior.
+The current `client_operation_id` mechanism provides idempotency but does not by itself constitute synchronization.
+
+## Documentation Rule
+
+Future architecture changes must update:
+
+1.  implementation
+2.  API contract
+3.  database documentation
+4.  architecture documentation
+5.  mobile integration documentation
+6.  roadmap/status
+
+Documentation must never describe planned behavior as implemented behavior.
+
+### Wichtigste Änderungen gegenüber den aktuellen Docs
+
+Damit ist insbesondere Folgendes korrigiert:
+
+-   **`asyncpg` → `psycopg`**
+-   **keine erfundene Alembic-Infrastruktur**
+-   **keine `roles`\-Tabelle**
+-   **keine `audit_events`\-Tabelle**
+-   **keine `file_objects`\-Tabelle**
+-   **`inventory_units` → tatsächliches `inventory`\-Batch/Entry-Modell**
+-   **FIFO → FEFO**
+-   **`/api/v1/...` → tatsächliche aktuelle API-Routen**
+-   **`/auth/login` → `/auth/token`**
+-   **kein erfundener `/sync`\-Endpoint**
+-   **kein Refresh-Token/Logout behauptet**
+-   **`DELETE /products/{id}` korrekt als Deaktivierung beschrieben**
+-   **`transactions` als tatsächliche Audit-/Historienquelle**
+-   **Open Food Facts korrekt als externe, untrusted enrichment source**
+-   **Offline Sync klar als Future Feature**
+-   **Statusbegriffe zwischen „implemented“ und „production ready“ getrennt**
+-   **technische Dokumentation vollständig auf Englisch**
+-   **Architekturentscheidungen als ADRs formuliert**
+
+Die API- und Datenbankteile sind dabei direkt am aktuellen Code ausgerichtet: Die vorhandenen Routen umfassen unter anderem `/auth/token`, `/users`, `/storage-locations`, `/products`, `/scan/{barcode}`, `/inventory`, `/products/{id}/consume`, `/products/{id}/correct`, `/expiring`, `/shopping-list` und `/transactions`; das Datenmodell besteht aktuell aus `users`, `storage_locations`, `products`, `inventory`, `shopping_list` und `transactions`. G![](https://www.google.com/s2/favicons?domain=https%3A%2F%2Fgithub.com&sz=128)GitHub+4
+
+**Eine Sache würde ich vor dem nächsten FlutterFlow-Schritt noch unbedingt machen:** `05-api.md` sollte danach als verbindlicher API-Vertrag gelten und wir sollten die Pydantic Request-/Response-Modelle im Code einmal gegen diese Dokumentation prüfen. Das verhindert, dass FlutterFlow anschließend gegen Felder baut, die die API tatsächlich anders nennt oder zurückgibt.
