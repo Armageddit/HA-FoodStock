@@ -1,159 +1,66 @@
-# FoodStock Localization
+# Localization
 
-## 1\. Scope
+## Language Policy
 
-FoodStock has two application languages:
+Technical documentation is English only.
+
+The mobile application should support:
 
 -   English
 -   German
 
-Technical documentation remains English-only.
+Application language must be independent from documentation language.
 
-## 2\. Application Names
+## User Interface
 
-The application names do not change with language.
+User-visible strings must not be hard-coded into business logic.
 
-Home Assistant:
+The mobile application should use Android/Flutter localization mechanisms.
 
-```text
-FoodStock-Home
-```
-
-Android:
+Examples:
 
 ```text
-FoodStock-Mobile
-```
-
-## 3\. Default Language
-
-The application should initially follow the Android/device language.
-
-Supported application locales:
-
-```text
-en
-de
-```
-
-If another device language is selected, English should be used as the fallback.
-
-## 4\. Manual Language Selection
-
-Settings must provide:
-
-```text
-Language
-
-English
-Deutsch
-```
-
-The selected language must persist.
-
-## 5\. Translation Rules
-
-All user-visible strings must be translatable.
-
-Do not hardcode user-visible text inside custom Dart code where a localization mechanism can be used.
-
-## 6\. Examples
-
-| English          | German                   |   |   |   |
-|------------------|--------------------------|---|---|---|
-| Home             | Startseite               |   |   |   |
-| Scan             | Scannen                  |   |   |   |
-| Inventory        | Bestand                  |   |   |   |
-| Expiring Soon    | Bald ablaufend           |   |   |   |
-| Shopping List    | Einkaufsliste            |   |   |   |
-| Locations        | Lagerorte                |   |   |   |
-| Settings         | Einstellungen            |   |   |   |
-| Administration   | Administration           |   |   |   |
-| Product          | Produkt                  |   |   |   |
-| Manufacturer     | Hersteller               |   |   |   |
-| Expiration Date  | Mindesthaltbarkeitsdatum |   |   |   |
-| Storage Location | Lagerort                 |   |   |   |
-| Quantity         | Menge                    |   |   |   |
-| Consume          | Verbrauchen              |   |   |   |
-| Add to Inventory | In Bestand übernehmen    |   |   |   |
-| Purchased        | Gekauft                  |   |   |   |
-| Needed           | Benötigt                 |   |   |   |
-| Use Date         | Datum übernehmen         |   |   |   |
-| Change           | Ändern                   |   |   |   |
-| Save             | Speichern                |   |   |   |
-| Cancel           | Abbrechen                |   |   |   |
-| Unknown Product  | Unbekanntes Produkt      |   |   |   |
-| Expired          | Abgelaufen               |   |   |   |
-| Urgent           | Dringend                 |   |   |   |
-| Soon             | Bald                     |   |   |   |
-| Upcoming         | Demnächst                |   |   |   |
-
-## 7\. German Terminology
-
-The application should use:
-
-```text
-MHD
-```
-
-where appropriate for familiar German users.
-
-For explanatory text:
-
-```text
-Mindesthaltbarkeitsdatum (MHD)
-```
-
-The German application must not use awkward literal translations.
-
-## 8\. English Terminology
-
-The preferred English term is:
-
-```text
+inventory
 expiration date
+storage location
+shopping list
+consume
+add stock
+correct stock
 ```
 
-rather than repeatedly using technical terminology such as:
+must have localized resources.
+
+## Dates
+
+Dates shown to users must follow the selected locale.
+
+The API should use machine-readable ISO date formats.
+
+For example:
 
 ```text
-expiry timestamp
+2026-09-20
 ```
 
-because the value is a date rather than a timestamp.
+The client is responsible for locale-specific display formatting.
 
-## 9\. Translation Testing
+## Units
 
-Every release must be tested in:
+The product `unit` is currently stored as a string.
 
--   English
--   German
-
-Testing must include:
-
--   Long German labels
--   Buttons
--   Dialogs
--   Error messages
--   Dates
--   Empty states
--   Permission explanations
--   Admin pages
-
-## 10\. Backend Language Policy
-
-API error codes should be language-neutral.
-
-Example:
+The current backend default is:
 
 ```text
-PRODUCT_NOT_FOUND
+Stück
 ```
 
-The mobile application may translate the error code into the user's language.
+If the mobile application introduces a controlled unit system, this should be treated as a future data-model decision rather than silently assuming a fixed enum today.
 
-This prevents backend localization from becoming coupled to the mobile UI.
+## Error Messages
 
-## 11\. Documentation
+Clients should not use server error text as localization keys.
 
-All technical documentation, source comments intended for developers, API documentation and architecture documentation are written in English.
+Server errors are technical responses.
+
+The mobile application should map stable HTTP status codes and, when introduced, stable application error codes to localized messages.
