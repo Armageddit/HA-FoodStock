@@ -547,6 +547,40 @@ The mobile client should not assume that an operation succeeded solely because i
 
 The backend response determines the authoritative server state.
 
+## Future: Product Groups
+
+The current API does not expose product-group management or product-equivalence matching.
+
+The initial mobile application should work with concrete products and their barcodes.
+
+A future API may provide product-group functionality for use cases such as:
+
+-   Finding equivalent products
+-   Aggregating stock across equivalent products
+-   Shopping-list recommendations
+-   Product substitutions
+-   Product similarity
+
+Future API design must preserve the distinction between a concrete product and a product group.
+
+For example:
+
+```text
+Concrete products:
+
+ALDI Milk 1.5%
+REWE Milk 1.5%
+Lidl Milk 1.5%
+
+Product group:
+
+Milk 1.5%
+```
+
+The API must not automatically replace one concrete product with another merely because both belong to the same product group.
+
+Automatic product matching is a future feature and is not part of the current API contract.
+
 ## API Stability
 
 The current API is an internal household API and does not currently use URL-based API versioning.
