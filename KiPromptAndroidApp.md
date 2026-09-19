@@ -47,7 +47,16 @@ Für Admins (Feld `role == "admin"` aus `/auth/me`) zeige zusätzlich eine Admin
 
 ## Scan- und MHD-Ablauf
 
-Der optimale Ablauf lautet: **Barcode scannen → Produkt prüfen → Menge → MHD fotografieren → Datum bestätigen → Lagerort → Speichern**.
+Der optimale Ablauf lautet: **Barcode scannen → Produkt prüfen → MHD fotografieren → Datum bestätigen → Menge →  Lagerort → Speichern**.
+
+Ich möchte eine Kamera Vorschau haben diese soll bei erkanntem Barcode diesen in ein Textfeld darunter eintragen (wahlweise kann man diesen auch manuell dort eintragen) und die Kameravorschau schließen danach soll die Vorschau für die Kamera zum erfassen des OCR-Datums sich öffnen.
+durch drücken auf scannen wird das Foto erstellt und mit OCR ausgewertet und in einem Date Picker eingetragen. Danach ist nur noch das Textfeld für EAN und der Date Picker sichtbar
+in der unteren Hälfte des Bildschirms soll permanent die Produkt Daten aufgelistet werden.
+Foto mit Namen des Produkts und darunter die menge und der Lagerort als Dropdown außer es ist bereites einer für dieses Produkt hinterlegt dann soll nur der Ort angezeigt werden.
+bei einem neuen Produkt ohne Bild soll anstelle des Bildes ein Bild mit einem + sein worüber man ein neues Bild einladen kann oder direkt fotografieren.
+Der zurück Knopf soll zur Startseite führen aktuell stürzt die App an beim Betätigen.
+oben rechts soll statt manuell dann in grünem Hintergrund speichern stehen wenn alles erforderliche ausgefüllt wurde.
+das lädt das Produkt in die Datenbank ein und startet einen weiteren Vorgang für ein weiteres Produkt.
 
 Barcode-Erkennung und OCR laufen ausschließlich lokal auf dem Android-Smartphone. Verwende für OCR eine FlutterFlow Custom Action mit Google ML Kit Text Recognition. Zeige über dem Kamerabild einen rechteckigen MHD-Rahmen. Suche im erkannten Text deutsche Datumsformen wie `15.09.2026`, `15/09/26` und `2026-09-15`.
 
