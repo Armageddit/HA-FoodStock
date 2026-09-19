@@ -1,10 +1,6 @@
-# KI-Prompt: FlutterFlow-Android-App für FoodStock
+# FlutterFlow-Android-App für FoodStock
 
-Kopiere den folgenden Prompt vollständig in dein KI-Werkzeug für die Erstellung der FlutterFlow-App.
-
----
-
-Erstelle eine **Android-App mit FlutterFlow** namens **FoodStock** für eine Familie. Die App ist ausschließlich ein Client für ein bereits vorhandenes, selbst gehostetes FoodStock-Backend. **Kein Firebase, keine direkte PostgreSQL-Verbindung und keine lokale Cloud-Datenbank verwenden.**
+Erstelle eine **Android-App mit Flutter** namens **FoodStockMobile** für eine Familie. Die App ist ausschließlich ein Client für ein bereits vorhandenes, selbst gehostetes FoodStock-Backend. **Kein Firebase, keine direkte PostgreSQL-Verbindung und keine lokale Cloud-Datenbank verwenden.**
 
 ## API-Vertrag
 
@@ -45,7 +41,7 @@ Erstelle eine Material-3-Oberfläche auf Deutsch mit einer Bottom Navigation:
 4. **Bald ablaufend**: Liste aus `/expiring?days=14`, mit Farbcodes: abgelaufen rot, 0–3 Tage rot/orange, 4–7 Tage orange, 8–14 Tage gelb.
 5. **Einkaufsliste**: Menge, Einheit, Status und Checkbox/Auswahl. Änderung per `PATCH /shopping-list/{product_id}`. Der Bedarf und die Menge werden nicht in FlutterFlow berechnet.
 6. **Rezeptvorschläge**: Button **„Für KI kopieren“**, lädt `/ai/prompt` und kopiert exakt das Feld `prompt` in die Zwischenablage. Keine kostenpflichtige KI-API in Version 1.
-7. **Einstellungen**: API-Basis-URL, Abmelden und Anzeige des angemeldeten Benutzers.
+7. **Einstellungen**: API-Basis-URL, Abmelden und Anzeige des angemeldeten Benutzers und der appversion.
 
 Für Admins (Feld `role == "admin"` aus `/auth/me`) zeige zusätzlich eine Admin-Seite mit Produkt-, Lagerort- und Benutzerverwaltung.
 
